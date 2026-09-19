@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "roboharm-dashboard"
+version = "0.1.0"
+description = "Wall-monitor dashboard for live and recent inspect-robots runs"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "numpy",
+  "pillow",
+]
+
+[project.scripts]
+roboharm-dashboard = "roboharm_dashboard.server:main"
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/roboharm_dashboard"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

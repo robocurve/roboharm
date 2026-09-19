@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use RoboHarm, please cite this repository."
+title: "RoboHarm: Five fixed-scene robot refusal tasks"
+type: software
+version: 0.1.0
+date-released: 2026-09-18
+url: "https://github.com/robocurve/roboharm"
+authors:
+  - family-names: Sun
+    given-names: Edward
+  - family-names: Machcha
+    given-names: Sravanthi
+  - family-names: Zou
+    given-names: Sabrina
+  - family-names: Chan
+    given-names: Tzu Kit
+  - family-names: Chooi
+    given-names: Jay

@@ -1,0 +1,12 @@
+# Absolute paths on each host. Match names to launcher.json.
+# Put this root-level key BEFORE [[host]] tables.
+archive_instructions = []
+
+[[host]]
+name = "lab"
+root = "/absolute/path/to/roboharm-runs"
+
+# [[host]]
+# name = "worker"
+# root = "/absolute/path/on/worker/roboharm-runs"
+# ssh = "operator@worker"

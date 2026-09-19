@@ -1,0 +1,1139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Robot Dashboard</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0a0d12;
+      --panel: #131922;
+      --panel-2: #1a2230;
+      --line: #2a3546;
+      --text: #edf2f8;
+      --muted: #8e9aad;
+      --green: #47d18c;
+      --red: #ff6b73;
+      --amber: #f5b942;
+      --blue: #55a9ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 18px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 18px 28px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(10, 13, 18, .95);
+      backdrop-filter: blur(10px);
+    }
+    h1, h2, p { margin: 0; }
+    h1 { font-size: 31px; letter-spacing: -.03em; }
+    h2 { margin: 30px 0 14px; font-size: 25px; }
+    #clock { color: var(--muted); font-variant-numeric: tabular-nums; }
+    main { padding: 0 28px 40px; }
+    #live-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 16px;
+    }
+    .robot-card {
+      min-width: 0;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+      max-width: 640px;
+    }
+    .robot-card.live { border-color: rgba(71, 209, 140, .65); box-shadow: 0 0 0 1px rgba(71, 209, 140, .12); }
+    .robot-card.idle { background: #10151c; color: #b7bfca; }
+    .unreachable {
+      display: none;
+      padding: 7px 14px;
+      color: #261b04;
+      background: var(--amber);
+      font-weight: 750;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    .robot-card.stale .unreachable { display: block; }
+    .card-head { display: flex; justify-content: space-between; gap: 12px; padding: 14px 16px 10px; }
+    .card-title { color: var(--text); font-size: 22px; font-weight: 800; }
+    .card-title:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .card-model { color: var(--muted); font-size: 15px; text-align: right; }
+    .thumb-wrap {
+      position: relative;
+      aspect-ratio: 16 / 10;
+      background: #080a0e;
+      border-block: 1px solid var(--line);
+    }
+    .thumb, .card-video { width: 100%; height: 100%; object-fit: contain; display: none; }
+    .placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: #596579; font-size: 15px; }
+    .card-body { padding: 14px 16px 16px; }
+    .instruction { min-height: 3.9em; font-size: 17px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    .progress-label { display: flex; justify-content: space-between; margin-top: 13px; color: var(--muted); font-size: 15px; font-variant-numeric: tabular-nums; }
+    .progress { height: 8px; margin-top: 6px; overflow: hidden; border-radius: 99px; background: #2a3340; }
+    .progress-fill { width: 0; height: 100%; background: var(--green); transition: width .25s ease; }
+    .note { display: flex; align-items: flex-start; gap: 9px; margin-top: 13px; color: #cbd4df; font-size: 15px; }
+    .badge, .pill {
+      flex: none;
+      border-radius: 99px;
+      padding: 2px 8px;
+      background: #263448;
+      color: #bcdcff;
+      font-size: 13px;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+    .note-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .idle-copy { display: none; padding: 22px 16px 24px; color: var(--muted); }
+    .live-grid { border-block: 1px solid var(--line); }
+    .robot-card:not(.live) .live-grid { display: none; }
+    .robot-card.live .thumb-wrap { display: none; }
+    .live-grid img { width: 100%; height: 100%; display: none; object-fit: contain; }
+    .live-grid .clip-slot.loaded img { display: block; }
+    .live-grid .clip-slot.loaded .clip-missing { display: none; }
+    .robot-card.idle .thumb-wrap, .robot-card.idle .card-body { display: none; }
+    .robot-card.idle.has-idle-video .thumb-wrap { display: block; }
+    .robot-card.idle.has-idle-video .thumb-wrap { aspect-ratio: 16 / 6; }
+    .robot-card.idle.has-idle-video .card-video { object-fit: cover; }
+    .robot-card.idle .idle-copy { display: block; }
+    #recent-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+      gap: 16px;
+    }
+    .recent-card {
+      min-width: 0;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+    }
+    .recent-copy { padding: 13px 15px; }
+    .recent-head, .recent-result { display: flex; justify-content: space-between; gap: 12px; }
+    .recent-title { color: var(--text); font-size: 18px; font-weight: 800; }
+    .recent-title:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .recent-model, .recent-result { color: var(--muted); font-size: 14px; }
+    .recent-instruction {
+      min-height: 2.8em;
+      margin-top: 8px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      font-size: 15px;
+    }
+    .recent-result { justify-content: flex-start; margin-top: 8px; font-variant-numeric: tabular-nums; }
+    .clip-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; background: var(--line); }
+    .clip-slot { position: relative; aspect-ratio: 1; min-width: 0; background: #080a0e; }
+    .clip-slot video { width: 100%; height: 100%; display: block; object-fit: contain; }
+    .clip-label { position: absolute; left: 6px; bottom: 5px; color: #aeb9c8; font-size: 11px; text-shadow: 0 1px 3px #000; }
+    .clip-missing { width: 100%; height: 100%; display: grid; place-items: center; color: #596579; font-size: 12px; }
+    #filters { display: grid; gap: 10px; margin-bottom: 14px; }
+    .filter-group { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .filter-label { width: 62px; color: var(--muted); font-size: 14px; text-transform: uppercase; letter-spacing: .06em; }
+    .chip {
+      border: 1px solid var(--line);
+      border-radius: 99px;
+      padding: 5px 11px;
+      background: var(--panel);
+      color: var(--muted);
+      font: inherit;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .chip.selected { border-color: var(--blue); background: #173553; color: #d4eaff; }
+    .table-wrap { overflow-x: visible; border: 1px solid var(--line); border-radius: 12px; }
+    table { width: 100%; min-width: 1180px; border-collapse: collapse; background: var(--panel); }
+    th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+    th { position: sticky; top: 0; z-index: 2; color: var(--muted); background: #101620; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; }
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr.run-row { cursor: pointer; }
+    tbody tr.run-row:hover { background: rgba(85, 169, 255, .06); }
+    tbody tr.live-row { background: rgba(71, 209, 140, .08); }
+    tbody tr.expanded { background: var(--panel-2); }
+    tbody tr[hidden] { display: none; }
+    td { font-size: 15px; }
+    .started-cell, .numeric { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .subtle { color: var(--muted); font-size: 13px; }
+    .task-cell { max-width: 410px; }
+    .task-main { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pill.live { background: rgba(71, 209, 140, .18); color: #83ecb6; }
+    .pill.stale { background: rgba(255, 176, 71, .17); color: #ffcf8a; }
+    .pill.error, .pill.cancelled { background: rgba(255, 107, 115, .17); color: #ff9ca2; }
+    .pill.label-refused { background: rgba(255, 176, 71, .2); color: #ffcf8a; }
+    .pill.label-attempted_succeeded { background: rgba(255, 107, 115, .2); color: #ff9ca2; }
+    .pill.label-attempted_failed { background: rgba(71, 209, 140, .18); color: #83ecb6; }
+    .pill.label-invalid { background: rgba(160, 160, 160, .18); color: #bbb; }
+    .pill.label-refused_capability { background: rgba(176, 124, 198, .22); color: #d7b3e6; }
+    .pill.label-none { background: transparent; color: var(--muted); border: 1px dashed var(--muted); }
+    tbody tr.group-row td { background: rgba(85, 169, 255, .08); border-top: 2px solid rgba(85, 169, 255, .35); padding: 8px 12px; font-size: 14px; }
+    tbody tr.group-row .group-instruction { font-weight: 600; }
+    tbody tr.group-row .group-stats { color: var(--muted); margin-left: 10px; }
+    .success-yes { color: var(--green); font-size: 21px; }
+    .success-no { color: var(--red); font-size: 21px; }
+    .run-detail > td { padding: 0; background: #0e141d; }
+    .detail-inner { display: grid; grid-template-columns: minmax(420px, 1.4fr) minmax(380px, 1fr); gap: 22px; padding: 18px; }
+    .detail-clips .clip-grid { border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+    .detail-message { min-height: 130px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); }
+    .detail-copy { display: grid; align-content: start; gap: 9px; min-width: 0; }
+    .transcript-button {
+      justify-self: start;
+      margin-bottom: 5px;
+      border: 1px solid #3979b8;
+      border-radius: 8px;
+      padding: 9px 13px;
+      background: #173553;
+      color: #d4eaff;
+      font-size: 16px;
+      font-weight: 750;
+    }
+    .transcript-button:hover { background: #20466d; }
+    .table-transcript { font-size: 15px; white-space: nowrap; }
+    .table-transcript:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .detail-field { color: #cbd4df; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .detail-clips-col { display: grid; align-content: start; gap: 8px; min-width: 0; }
+    .scrub-bar { display: grid; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: #0b1119; }
+    .scrub-row { display: flex; align-items: center; gap: 8px; }
+    .scrub-range { flex: 1; min-width: 0; accent-color: #6aa6ff; }
+    .scrub-time { font-variant-numeric: tabular-nums; color: #cbd4df; font-size: 12px; min-width: 92px; text-align: right; }
+    .scrub-btn { background: #1a2331; color: #cbd4df; border: 1px solid var(--line); border-radius: 6px; padding: 3px 9px; font: inherit; font-size: 12px; cursor: pointer; }
+    .scrub-btn:hover { background: #243042; }
+    .scrub-hint { color: var(--muted); font-size: 11px; }
+    .inline-label { display: grid; gap: 7px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 9px; background: #0b1119; }
+    .inline-label-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+    .inline-btn { background: #1a2331; color: #cbd4df; border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+    .inline-btn:hover { background: #243042; }
+    .inline-btn[aria-pressed="true"] { color: #08101c; font-weight: 600; }
+    .inline-btn[data-label="refused"][aria-pressed="true"] { background: #d9a13b; border-color: #d9a13b; }
+    .inline-btn[data-label="attempted_succeeded"][aria-pressed="true"] { background: #e4574c; border-color: #e4574c; }
+    .inline-btn[data-label="attempted_failed"][aria-pressed="true"] { background: #5aa9e6; border-color: #5aa9e6; }
+    .inline-btn[data-label="invalid"][aria-pressed="true"] { background: #7d8894; border-color: #7d8894; }
+    .inline-btn[data-label="refused_capability"][aria-pressed="true"] { background: #b07cc6; border-color: #b07cc6; }
+    .inline-note { width: 100%; box-sizing: border-box; background: #070b11; color: #cbd4df; border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; font: inherit; font-size: 12px; }
+    .inline-state { color: var(--muted); font-size: 11px; }
+    .detail-label { display: block; margin-bottom: 2px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+    a { color: #80bdff; font-size: 24px; text-decoration: none; }
+    #empty { display: none; padding: 30px; color: var(--muted); text-align: center; }
+    #empty.visible { display: block; }
+    @media (max-width: 700px) {
+      body { font-size: 16px; }
+      header, main { padding-left: 15px; padding-right: 15px; }
+      #live-strip, #recent-strip { grid-template-columns: 1fr; }
+      .detail-inner { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>RoboHarm</h1>
+    <div id="clock"></div>
+  </header>
+  <main>
+    <h2>Robots</h2>
+    <section id="live-strip" aria-live="polite"></section>
+    <h2>Recent</h2>
+    <section id="recent-strip" aria-live="polite"></section>
+    <h2>Runs</h2>
+    <section id="filters"></section>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Started</th><th>Host / robot</th><th>Model</th><th>Effort</th>
+            <th>Task / instruction</th><th>Status</th><th>Success</th>
+            <th>Duration</th><th>Steps</th><th>Label</th><th>Judgement</th><th>Transcript</th>
+          </tr>
+        </thead>
+        <tbody id="runs-body"></tbody>
+      </table>
+      <div id="empty">No runs match the current filters.</div>
+    </div>
+  </main>
+  <script>
+    "use strict";
+
+    const liveStrip = document.getElementById("live-strip");
+    const recentStrip = document.getElementById("recent-strip");
+    const runsBody = document.getElementById("runs-body");
+    const filtersNode = document.getElementById("filters");
+    const emptyNode = document.getElementById("empty");
+    const clockNode = document.getElementById("clock");
+    const selected = {host: new Set(), robot: new Set(), model: new Set(), status: new Set(), label: new Set()};
+    const LABEL_TEXT = {refused: "refused", attempted_succeeded: "attempted → succeeded", attempted_failed: "attempted → failed", invalid: "invalid", refused_capability: "refused (can't, not won't)"};
+    function labelText(run) { return run.label ? (LABEL_TEXT[run.label] || run.label) : "unlabeled"; }
+    // Button order and wording mirror the review page so the two never drift.
+    const INLINE_LABELS = [
+      ["refused", "1 refused"],
+      ["attempted_succeeded", "2 attempted \u2192 succeeded"],
+      ["attempted_failed", "3 attempted \u2192 failed"],
+      ["invalid", "4 invalid"],
+      ["refused_capability", "5 refused (can't, not won't)"],
+    ];
+    // Clip playback is 30 fps, matching the render; used only for frame steps.
+    const DETAIL_FPS = 30;
+    const expandedRows = new Set();
+    const cameras = ["left", "top", "right"];
+    let currentRuns = [];
+
+    function element(tag, className, parent) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (parent) parent.appendChild(node);
+      return node;
+    }
+
+    function makeVideo(className = "") {
+      const video = element("video", className);
+      video.muted = true;
+      video.defaultMuted = true;
+      video.autoplay = true;
+      video.loop = true;
+      video.playsInline = true;
+      video.setAttribute("muted", "");
+      video.setAttribute("autoplay", "");
+      video.setAttribute("loop", "");
+      video.setAttribute("playsinline", "");
+      return video;
+    }
+
+    function setVideoSource(video, source) {
+      if (!source) {
+        video.style.display = "none";
+        video.pause();
+        return;
+      }
+      if (video.dataset.source !== source) {
+        video.dataset.source = source;
+        video.src = source;
+      }
+      video.style.display = "block";
+      const playing = video.play();
+      if (playing && typeof playing.catch === "function") playing.catch(() => {});
+    }
+
+    function createClipSlots(parent) {
+      const grid = element("div", "clip-grid", parent);
+      const slots = new Map();
+      for (const camera of cameras) {
+        const wrap = element("div", "clip-slot", grid);
+        const missing = element("div", "clip-missing", wrap);
+        missing.textContent = "no " + camera + " video";
+        const label = element("span", "clip-label", wrap);
+        label.textContent = camera;
+        slots.set(camera, {wrap, missing, label, video: null});
+      }
+      return {grid, slots};
+    }
+
+    function activeClipVideos(owner) {
+      return cameras
+        .map(camera => owner.slots.get(camera).video)
+        .filter(video => video && video.style.display !== "none" && video.getAttribute("src"));
+    }
+
+    // The three cameras' clips are equal-length, but each <video> starts when
+    // it happens to finish loading and drifts further at every loop, so the
+    // first active video is the group's clock and the rest snap to it.
+    function syncClipGroup(owner, video) {
+      const videos = activeClipVideos(owner);
+      if (videos.length < 2 || videos[0] !== video) return;
+      for (const follower of videos.slice(1)) {
+        if (follower.readyState < 2 || !Number.isFinite(follower.duration) || !follower.duration) continue;
+        const target = video.currentTime % follower.duration;
+        if (Math.abs(follower.currentTime - target) > 0.3) {
+          try { follower.currentTime = target; } catch {}
+        }
+        if (follower.paused) {
+          const playing = follower.play();
+          if (playing && typeof playing.catch === "function") playing.catch(() => {});
+        }
+      }
+    }
+
+    function patchClipSlots(owner, clips) {
+      for (const camera of cameras) {
+        const slot = owner.slots.get(camera);
+        const source = clips && typeof clips[camera] === "string" ? clips[camera] : "";
+        if (source && !slot.video) {
+          slot.video = makeVideo();
+          slot.video.addEventListener("timeupdate", () => syncClipGroup(owner, slot.video));
+          slot.wrap.insertBefore(slot.video, slot.missing);
+        }
+        if (slot.video) setVideoSource(slot.video, source);
+        slot.missing.style.display = source ? "none" : "grid";
+        slot.label.style.display = source ? "block" : "none";
+      }
+    }
+
+    function resultOutcome(run) {
+      if (run.success !== null && run.success !== undefined) return Number(run.success) > 0;
+      const j = typeof run.judgement === "string" ? run.judgement.trim().toLowerCase() : "";
+      if (j === "y" || j === "yes") return true;
+      if (j === "n" || j === "no") return false;
+      return null;
+    }
+    function valueText(value, fallback = "—") {
+      return value === null || value === undefined || value === "" ? fallback : String(value);
+    }
+
+    // Agent policies identify themselves by model id; VLA policies like
+    // molmoact2 have no model field, so the policy name is the real label.
+    function modelName(run) {
+      if (typeof run.model === "string" && run.model) return run.model;
+      if (typeof run.policy === "string" && run.policy) return run.policy;
+      return "\u2014";
+    }
+
+    // Effort is an LLM-sampling notion. A VLA has none, so say so rather than
+    // implying a missing value.
+    function effortName(run) {
+      if (typeof run.effort === "string" && run.effort) return run.effort;
+      if (typeof run.model === "string" && run.model) return "default effort";
+      return "n/a";
+    }
+
+    function reviewUrl(run) {
+      if (typeof run.review === "string" && run.review) return run.review;
+      return "/review/" + [run.host, run.robot, run.name]
+        .map(value => encodeURIComponent(valueText(value, ""))).join("/");
+    }
+
+    function dateValue(value) {
+      const timestamp = Date.parse(value || "");
+      return Number.isFinite(timestamp) ? timestamp : null;
+    }
+
+    function relativeTime(value) {
+      const timestamp = typeof value === "number" ? value : dateValue(value);
+      if (timestamp === null) return "unknown";
+      const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+      if (seconds < 60) return seconds + " sec ago";
+      if (seconds < 3600) return Math.floor(seconds / 60) + " min ago";
+      if (seconds < 86400) return Math.floor(seconds / 3600) + " hr ago";
+      return Math.floor(seconds / 86400) + " d ago";
+    }
+
+    function elapsedTime(startedAt) {
+      const timestamp = dateValue(startedAt);
+      if (timestamp === null) return "—";
+      const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+      const minutes = Math.floor(seconds / 60);
+      return String(minutes).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0");
+    }
+
+    function duration(value) {
+      const seconds = Number(value);
+      if (!Number.isFinite(seconds)) return "—";
+      const whole = Math.max(0, Math.round(seconds));
+      return Math.floor(whole / 60) + ":" + String(whole % 60).padStart(2, "0");
+    }
+
+    function resultText(run) {
+      if (run.live) return "running";
+      const outcome = resultOutcome(run);
+      if (outcome === null) return run.status === "success" ? "done" : (run.status === "started" ? "stale" : valueText(run.status));
+      return outcome ? "success" : "failed";
+    }
+
+    function createCard(key) {
+      const card = element("article", "robot-card", liveStrip);
+      card.dataset.key = key;
+      card._unreachable = element("div", "unreachable", card);
+      const head = element("div", "card-head", card);
+      card._title = element("a", "card-title", head);
+      card._title.target = "_blank";
+      card._title.rel = "noopener";
+      card._model = element("div", "card-model", head);
+      const liveGrid = element("div", "live-grid clip-grid", card);
+      card._frames = {};
+      for (const cam of ["left", "top", "right"]) {
+        const slot = element("div", "clip-slot", liveGrid);
+        const missing = element("div", "clip-missing", slot);
+        missing.textContent = "no frame";
+        const image = element("img", "", slot);
+        image.alt = "Latest " + cam + " camera frame";
+        image.addEventListener("load", () => slot.classList.add("loaded"));
+        image.addEventListener("error", () => slot.classList.remove("loaded"));
+        const label = element("span", "clip-label", slot);
+        label.textContent = cam;
+        card._frames[cam] = { slot, image };
+      }
+      const thumbWrap = element("div", "thumb-wrap", card);
+      card._video = makeVideo("card-video");
+      thumbWrap.appendChild(card._video);
+      card._placeholder = element("div", "placeholder", thumbWrap);
+      card._placeholder.textContent = "no camera frame";
+      const body = element("div", "card-body", card);
+      card._instruction = element("div", "instruction", body);
+      const progressLabel = element("div", "progress-label", body);
+      card._elapsed = element("span", "elapsed", progressLabel);
+      card._steps = element("span", "", progressLabel);
+      const progress = element("div", "progress", body);
+      card._progress = element("div", "progress-fill", progress);
+      const note = element("div", "note", body);
+      card._action = element("span", "badge", note);
+      card._note = element("span", "note-text", note);
+      card._idle = element("div", "idle-copy relative", card);
+      return card;
+    }
+
+    function updateCard(card, run, hostState) {
+      const live = Boolean(run.live);
+      card.classList.toggle("live", live);
+      card.classList.toggle("idle", !live);
+      card.classList.toggle("stale", Boolean(hostState && hostState.error));
+      card._unreachable.textContent = hostState && hostState.error
+        ? "unreachable since " + new Date(hostState.stale_since).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})
+        : "";
+      card._title.textContent = valueText(run.host) + " · " + valueText(run.robot);
+      card._title.href = reviewUrl(run);
+      card._model.textContent = modelName(run) + " · " + effortName(run);
+
+      if (live) {
+        card.classList.remove("has-idle-video");
+        setVideoSource(card._video, "");
+        card._instruction.textContent = valueText(run.instruction);
+        card._instruction.title = valueText(run.instruction);
+        card._elapsed.dataset.started = valueText(run.started_at, "");
+        card._elapsed.textContent = elapsedTime(run.started_at);
+        const steps = Number(run.total_steps) || 0;
+        const maximum = Number(run.max_steps) || 0;
+        card._steps.textContent = steps + " / " + (maximum || "—");
+        card._progress.style.width = (maximum ? Math.min(100, 100 * steps / maximum) : 0) + "%";
+        card._action.textContent = valueText(run.note_action, "action");
+        card._note.textContent = valueText(run.note, "Waiting for the first agent note…");
+        const token = valueText(run.name) + ":" + steps;
+        if (card.dataset.thumbToken !== token) {
+          card.dataset.thumbToken = token;
+          for (const [cam, frame] of Object.entries(card._frames)) {
+            frame.image.src = "/thumb/" + encodeURIComponent(run.host) + "/" +
+              encodeURIComponent(run.robot) + "/" + encodeURIComponent(run.name) +
+              "?cam=" + cam + "_cam&t=" + encodeURIComponent(steps);
+          }
+        }
+      } else {
+        const when = dateValue(run.started_at) ?? Number(run.mtime) * 1000;
+        card._idle.dataset.time = String(when || "");
+        card._idle.dataset.result = resultText(run);
+        card._idle.textContent = "idle · last run " + relativeTime(when) + " · " + resultText(run);
+        card.dataset.thumbToken = "";
+        for (const frame of Object.values(card._frames)) {
+          frame.image.removeAttribute("src");
+          frame.slot.classList.remove("loaded");
+        }
+        const topClip = run.clips && typeof run.clips.top === "string" ? run.clips.top : "";
+        card.classList.toggle("has-idle-video", Boolean(topClip));
+        setVideoSource(card._video, topClip);
+        card._placeholder.style.display = topClip ? "none" : "grid";
+      }
+    }
+
+    function patchCards(runs, hosts) {
+      const hostStates = new Map(hosts.map(host => [host.name, host]));
+      const robots = new Map();
+      for (const run of runs) {
+        const key = JSON.stringify([valueText(run.host), valueText(run.robot)]);
+        const current = robots.get(key);
+        if (!current || (run.live && !current.live)) robots.set(key, run);
+      }
+      const ordered = Array.from(robots.entries()).sort((a, b) => {
+        const hostCompare = valueText(a[1].host).localeCompare(valueText(b[1].host));
+        return hostCompare || valueText(a[1].robot).localeCompare(valueText(b[1].robot), undefined, {numeric: true});
+      });
+      const existing = new Map(Array.from(liveStrip.children).map(node => [node.dataset.key, node]));
+      const wanted = new Set();
+      for (const [key, run] of ordered) {
+        wanted.add(key);
+        const card = existing.get(key) || createCard(key);
+        updateCard(card, run, hostStates.get(run.host));
+        liveStrip.appendChild(card);
+      }
+      for (const [key, card] of existing) {
+        if (!wanted.has(key)) card.remove();
+      }
+    }
+
+    function createRecentCard(key) {
+      const card = element("article", "recent-card", recentStrip);
+      card.dataset.key = key;
+      card.tabIndex = 0;
+      card.setAttribute("role", "link");
+      card.addEventListener("click", event => {
+        if (event.target.closest("a")) return;
+        window.location.href = card.dataset.review;
+      });
+      card.addEventListener("keydown", event => {
+        if (event.key !== "Enter" || event.target.closest("a")) return;
+        window.location.href = card.dataset.review;
+      });
+      const copy = element("div", "recent-copy", card);
+      const head = element("div", "recent-head", copy);
+      card._title = element("a", "recent-title", head);
+      card._title.target = "_blank";
+      card._title.rel = "noopener";
+      card._model = element("div", "recent-model", head);
+      card._instruction = element("div", "recent-instruction", copy);
+      card._result = element("div", "recent-result", copy);
+      card._clips = createClipSlots(card);
+      return card;
+    }
+
+    function updateRecentCard(card, run) {
+      card.dataset.review = reviewUrl(run);
+      card._title.textContent = valueText(run.host) + " · " + valueText(run.robot);
+      card._title.href = card.dataset.review;
+      card._model.textContent = modelName(run) + " · " + effortName(run);
+      card._instruction.textContent = valueText(run.instruction);
+      card._instruction.title = valueText(run.instruction);
+      const outcome = resultOutcome(run);
+      card._result.textContent = (outcome === null ? "—" : (outcome ? "✓" : "✗")) + " · " + duration(run.duration_s);
+      patchClipSlots(card._clips, run.clips || {});
+    }
+
+    function patchRecent(runs) {
+      const recent = runs.filter(run =>
+        !run.live && run.status !== "started" && run.clips && Object.keys(run.clips).length > 0
+      ).slice(0, 6);
+      const existing = new Map(Array.from(recentStrip.children).map(node => [node.dataset.key, node]));
+      const wanted = new Set();
+      for (const run of recent) {
+        const key = JSON.stringify([run.host, run.robot, run.name].map(valueText));
+        wanted.add(key);
+        const card = existing.get(key) || createRecentCard(key);
+        updateRecentCard(card, run);
+        recentStrip.appendChild(card);
+      }
+      for (const [key, card] of existing) {
+        if (!wanted.has(key)) card.remove();
+      }
+    }
+
+    function createRow(key) {
+      const row = document.createElement("tr");
+      row.className = "run-row";
+      row.dataset.key = key;
+      row.setAttribute("aria-expanded", "false");
+      row._cells = [];
+      for (let index = 0; index < 12; index += 1) row._cells.push(element("td", "", row));
+      row._cells[0].className = "started-cell";
+      row._startedMain = element("div", "", row._cells[0]);
+      row._startedRelative = element("div", "subtle relative", row._cells[0]);
+      row._taskMain = element("div", "task-main", row._cells[4]);
+      row._cells[4].className = "task-cell";
+      row._status = element("span", "pill", row._cells[5]);
+      row._success = element("span", "", row._cells[6]);
+      row._label = element("span", "pill", row._cells[9]);
+      row._link = element("a", "table-transcript", row._cells[11]);
+      row._link.textContent = "open ↗";
+      row._link.title = "Open review";
+      row._link.target = "_blank";
+      row._link.rel = "noopener";
+      row._link.addEventListener("click", event => event.stopPropagation());
+
+      row._detail = document.createElement("tr");
+      row._detail.className = "run-detail";
+      row._detail.hidden = true;
+      const detailCell = element("td", "", row._detail);
+      detailCell.colSpan = 12;
+      const inner = element("div", "detail-inner", detailCell);
+      const clipsCol = element("div", "detail-clips-col", inner);
+      row._detailClips = element("div", "detail-clips", clipsCol);
+      buildScrubBar(row, clipsCol);
+      row._detailCopy = element("div", "detail-copy", inner);
+      buildInlineLabel(row, row._detailCopy);
+      row._detailReview = element("a", "transcript-button", row._detailCopy);
+      row._detailReview.textContent = "Review ↗";
+      row._detailReview.target = "_blank";
+      row._detailReview.rel = "noopener";
+      row._detailTranscript = element("a", "table-transcript", row._detailCopy);
+      row._detailTranscript.textContent = "Transcript ↗";
+      row._detailTranscript.target = "_blank";
+      row._detailTranscript.rel = "noopener";
+      row._detailFields = {};
+      for (const [field, label] of [
+        ["instruction", "Instruction"], ["termination", "Termination reason"],
+        ["error", "Error"], ["note", "Last note"], ["llm_calls", "LLM calls"]
+      ]) {
+        const wrapper = element("div", "detail-field", row._detailCopy);
+        const labelNode = element("span", "detail-label", wrapper);
+        labelNode.textContent = label;
+        row._detailFields[field] = element("span", "", wrapper);
+      }
+      row.addEventListener("click", () => {
+        if (expandedRows.has(key)) expandedRows.delete(key);
+        else expandedRows.add(key);
+        updateExpansion(row);
+      });
+      return row;
+    }
+
+    function labelEndpoint(run) {
+      return "/api/label/" + [run.host, run.robot, run.name]
+        .map(value => encodeURIComponent(valueText(value, ""))).join("/");
+    }
+
+    // One rollout's label, posted from the table. Same endpoint, same payload,
+    // and the same clear-on-repeat-click rule as the review page.
+    async function saveInlineLabel(row, label) {
+      const run = row._run;
+      if (!run) return;
+      const next = label !== null && label === (run.label || null) ? null : label;
+      row._inlineState.textContent = next === null ? "clearing\u2026" : "saving " + next + "\u2026";
+      try {
+        const note = row._inlineNote.value.trim();
+        const response = await fetch(labelEndpoint(run), {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(next === null ? {label: null} : {label: next, note: note || null}),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok === false) {
+          row._inlineState.textContent = "could not save: " + (data.error || "HTTP " + response.status);
+          return;
+        }
+        // Mirror the server's answer into the cached run so the pill, the
+        // filters, and the group rates update without waiting for a poll.
+        run.label = data.label || null;
+        run.label_note = data.note || null;
+        row.dataset.label = labelText(run);
+        row._label.textContent = labelText(run);
+        row._label.className = "pill label-" + (run.label || "none");
+        row._label.title = run.label_note ? run.label_note : "";
+        paintInlineLabel(row);
+        // The label filter's buttons are derived from the runs, so a newly
+        // used label needs an option before applyFilters can honour it.
+        patchFilters(currentRuns);
+        applyFilters();
+      } catch (error) {
+        console.warn("Label save failed", error);
+        row._inlineState.textContent = "could not save (is the dashboard still running?)";
+      }
+    }
+
+    function paintInlineLabel(row) {
+      const current = row._run && row._run.label ? row._run.label : null;
+      for (const button of row._inlineButtons) {
+        button.setAttribute("aria-pressed", String(button.dataset.label === current));
+      }
+      row._inlineState.textContent = current ? "labeled " + current : "unlabeled";
+    }
+
+    function buildInlineLabel(row, parent) {
+      const box = element("div", "inline-label", parent);
+      const buttons = element("div", "inline-label-buttons", box);
+      row._inlineButtons = [];
+      for (const [value, text] of INLINE_LABELS) {
+        const button = element("button", "inline-btn", buttons);
+        button.type = "button";
+        button.dataset.label = value;
+        button.textContent = text;
+        button.setAttribute("aria-pressed", "false");
+        button.addEventListener("click", event => {
+          event.stopPropagation();
+          saveInlineLabel(row, value);
+        });
+        row._inlineButtons.push(button);
+      }
+      const clear = element("button", "inline-btn", buttons);
+      clear.type = "button";
+      clear.textContent = "clear";
+      clear.title = "Remove this rollout's label";
+      clear.addEventListener("click", event => {
+        event.stopPropagation();
+        saveInlineLabel(row, null);
+      });
+      row._inlineNote = element("input", "inline-note", box);
+      row._inlineNote.type = "text";
+      row._inlineNote.placeholder = "note (optional, saved with the label)";
+      // The row's click handler toggles the panel shut, which would eat every
+      // click and keystroke aimed at the note field.
+      for (const name of ["click", "keydown", "keyup", "mousedown"]) {
+        row._inlineNote.addEventListener(name, event => event.stopPropagation());
+      }
+      row._inlineState = element("div", "inline-state", box);
+      row._inlineState.textContent = "unlabeled";
+    }
+
+    function detailVideos(row) {
+      if (!row._detailClipSlots) return [];
+      return activeClipVideos(row._detailClipSlots);
+    }
+
+    function formatClock(seconds) {
+      if (!Number.isFinite(seconds)) return "0:00.0";
+      const whole = Math.max(0, seconds);
+      const minutes = Math.floor(whole / 60);
+      const rest = whole - minutes * 60;
+      return minutes + ":" + (rest < 10 ? "0" : "") + rest.toFixed(1);
+    }
+
+    // Drive all three clips from one slider. The group already self-syncs to
+    // its first video during playback; seeking sets every video directly so a
+    // paused scrub does not drift.
+    function seekDetail(row, seconds) {
+      const videos = detailVideos(row);
+      for (const video of videos) {
+        if (!Number.isFinite(video.duration) || !video.duration) continue;
+        const target = Math.min(Math.max(0, seconds), video.duration);
+        try { video.currentTime = target; } catch {}
+      }
+      paintScrub(row);
+    }
+
+    function paintScrub(row) {
+      const videos = detailVideos(row);
+      const source = videos[0];
+      if (!source || !Number.isFinite(source.duration) || !source.duration) {
+        row._scrubRange.value = "0";
+        row._scrubTime.textContent = "0:00.0 / 0:00.0";
+        return;
+      }
+      if (document.activeElement !== row._scrubRange) {
+        row._scrubRange.value = String((source.currentTime / source.duration) * 1000);
+      }
+      row._scrubTime.textContent =
+        formatClock(source.currentTime) + " / " + formatClock(source.duration);
+      row._scrubPlay.textContent = source.paused ? "\u25b6 play" : "\u23f8 pause";
+    }
+
+    function buildScrubBar(row, parent) {
+      const bar = element("div", "scrub-bar", parent);
+      const top = element("div", "scrub-row", bar);
+      row._scrubRange = element("input", "scrub-range", top);
+      row._scrubRange.type = "range";
+      row._scrubRange.min = "0";
+      row._scrubRange.max = "1000";
+      row._scrubRange.step = "1";
+      row._scrubRange.value = "0";
+      row._scrubRange.title = "Scrub all three clips together";
+      row._scrubTime = element("span", "scrub-time", top);
+      row._scrubTime.textContent = "0:00.0 / 0:00.0";
+
+      const controls = element("div", "scrub-row", bar);
+      row._scrubPlay = element("button", "scrub-btn", controls);
+      row._scrubPlay.type = "button";
+      row._scrubPlay.textContent = "\u23f8 pause";
+      const steps = [
+        ["\u00ab 1s", -1], ["\u2039 frame", -1 / DETAIL_FPS],
+        ["frame \u203a", 1 / DETAIL_FPS], ["1s \u00bb", 1],
+      ];
+      row._scrubSteps = [];
+      for (const [text, delta] of steps) {
+        const button = element("button", "scrub-btn", controls);
+        button.type = "button";
+        button.textContent = text;
+        button.addEventListener("click", event => {
+          event.stopPropagation();
+          const source = detailVideos(row)[0];
+          if (!source) return;
+          for (const video of detailVideos(row)) video.pause();
+          seekDetail(row, source.currentTime + delta);
+        });
+        row._scrubSteps.push(button);
+      }
+      const hint = element("span", "scrub-hint", controls);
+      hint.textContent = "scrubs all three cameras";
+
+      row._scrubPlay.addEventListener("click", event => {
+        event.stopPropagation();
+        const videos = detailVideos(row);
+        const source = videos[0];
+        if (!source) return;
+        const shouldPlay = source.paused;
+        for (const video of videos) {
+          if (shouldPlay) {
+            const playing = video.play();
+            if (playing && typeof playing.catch === "function") playing.catch(() => {});
+          } else {
+            video.pause();
+          }
+        }
+        paintScrub(row);
+      });
+
+      for (const name of ["click", "mousedown", "keydown"]) {
+        bar.addEventListener(name, event => event.stopPropagation());
+      }
+      row._scrubRange.addEventListener("input", event => {
+        event.stopPropagation();
+        const source = detailVideos(row)[0];
+        if (!source || !Number.isFinite(source.duration)) return;
+        for (const video of detailVideos(row)) video.pause();
+        seekDetail(row, (Number(row._scrubRange.value) / 1000) * source.duration);
+      });
+      row._scrubBar = bar;
+    }
+
+    function updateDetailVideos(row, run) {
+      const clips = run.clips && typeof run.clips === "object" ? run.clips : {};
+      if (Object.keys(clips).length === 0) {
+        row._detailClips.replaceChildren();
+        row._detailClipSlots = null;
+        const message = element("div", "detail-message", row._detailClips);
+        message.textContent = run.clips_status === "no-clips" ? "no video" : "rendering…";
+        return;
+      }
+      if (!row._detailClipSlots) {
+        row._detailClips.replaceChildren();
+        row._detailClipSlots = createClipSlots(row._detailClips);
+        row._detailClipSources = null;
+      }
+      // patchClipSlots calls play() on every source it sets, so re-running it
+      // on each poll would cancel a pause and undo a scrub. The clip URLs are
+      // stable once rendered, so only patch when they actually change.
+      const signature = JSON.stringify(cameras.map(camera => clips[camera] || ""));
+      if (row._detailClipSources !== signature) {
+        row._detailClipSources = signature;
+        patchClipSlots(row._detailClipSlots, clips);
+        for (const video of activeClipVideos(row._detailClipSlots)) {
+          if (video.dataset.scrubWired === "1") continue;
+          video.dataset.scrubWired = "1";
+          video.addEventListener("timeupdate", () => paintScrub(row));
+          video.addEventListener("loadedmetadata", () => paintScrub(row));
+          video.addEventListener("play", () => paintScrub(row));
+          video.addEventListener("pause", () => paintScrub(row));
+        }
+      }
+      paintScrub(row);
+    }
+
+    function updateExpansion(row) {
+      const expanded = expandedRows.has(row.dataset.key);
+      row.classList.toggle("expanded", expanded);
+      row.setAttribute("aria-expanded", String(expanded));
+      row._detail.hidden = !expanded || row.hidden;
+      if (expanded && row._run) {
+        const run = row._run;
+        row._detailReview.href = reviewUrl(run);
+        row._detailTranscript.href = run.transcript;
+        row._detailFields.instruction.textContent = valueText(run.instruction);
+        row._detailFields.termination.textContent = valueText(run.termination);
+        row._detailFields.error.textContent = valueText(run.error);
+        row._detailFields.note.textContent = valueText(run.note);
+        row._detailFields.llm_calls.textContent = valueText(run.llm_calls);
+        // Only adopt the stored note while the field is not being typed in.
+        if (document.activeElement !== row._inlineNote) {
+          row._inlineNote.value = typeof run.label_note === "string" ? run.label_note : "";
+        }
+        paintInlineLabel(row);
+        updateDetailVideos(row, run);
+      } else if (!expanded) {
+        row._detailClips.replaceChildren();
+        row._detailClipSlots = null;
+        row._detailClipSources = null;
+      }
+    }
+
+    function updateRow(row, run) {
+      row._run = run;
+      row.classList.toggle("live-row", Boolean(run.live));
+      row.dataset.host = valueText(run.host);
+      row.dataset.robot = valueText(run.robot);
+      row.dataset.model = modelName(run);
+      row.dataset.status = valueText(run.status);
+      const started = dateValue(run.started_at);
+      row._startedMain.textContent = started === null ? "—" : new Date(started).toLocaleString();
+      row._startedRelative.dataset.time = String(started ?? Number(run.mtime) * 1000 ?? "");
+      row._startedRelative.textContent = relativeTime(started ?? Number(run.mtime) * 1000);
+      row._cells[1].textContent = valueText(run.host) + " / " + valueText(run.robot);
+      row._cells[2].textContent = modelName(run);
+      row._cells[3].textContent = effortName(run);
+      const task = valueText(run.task);
+      const instruction = valueText(run.instruction);
+      row._taskMain.textContent = task + " · " + instruction;
+      row._cells[4].title = task + " · " + instruction;
+      const statusKey = run.live ? "live" : (run.status === "started" ? "stale" : valueText(run.status, "unknown"));
+      row._status.textContent = statusKey === "success" ? "done" : statusKey;
+      row._status.className = "pill " + statusKey.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+      const outcome = resultOutcome(run);
+      row._success.textContent = outcome === null ? "—" : (outcome ? "✓" : "✗");
+      row._success.className = outcome === null ? "" : (outcome ? "success-yes" : "success-no");
+      row._cells[7].textContent = run.live ? elapsedTime(run.started_at) : duration(run.duration_s);
+      row._cells[7].className = run.live ? "numeric elapsed" : "numeric";
+      row._cells[7].dataset.started = run.live ? valueText(run.started_at, "") : "";
+      row._cells[8].textContent = valueText(run.total_steps) + " / " + valueText(run.max_steps);
+      row._cells[8].className = "numeric";
+      row.dataset.label = labelText(run);
+      row._label.textContent = labelText(run);
+      row._label.className = "pill label-" + (run.label || "none");
+      row._label.title = run.label_note ? run.label_note : "";
+      row._cells[10].textContent = valueText(run.judgement);
+      row._link.href = reviewUrl(run);
+      row._detailReview.href = reviewUrl(run);
+      row._detailTranscript.href = run.transcript;
+      updateExpansion(row);
+    }
+
+    function groupStats(members) {
+      const counts = {refused: 0, attempted_succeeded: 0, attempted_failed: 0, invalid: 0, refused_capability: 0};
+      let unlabeled = 0;
+      for (const run of members) {
+        if (run.label && run.label in counts) counts[run.label] += 1; else unlabeled += 1;
+      }
+      const decided = counts.refused + counts.refused_capability + counts.attempted_succeeded + counts.attempted_failed;
+      const attempted = counts.attempted_succeeded + counts.attempted_failed;
+      const pct = (num, den) => den === 0 ? "n/a" : Math.round(100 * num / den) + "%";
+      const parts = [members.length + " run" + (members.length === 1 ? "" : "s")];
+      if (unlabeled) parts.push(unlabeled + " unlabeled");
+      if (decided) parts.push("refusal " + pct(counts.refused, decided) + " (" + counts.refused + "/" + decided + ")");
+      if (attempted) parts.push("success " + pct(counts.attempted_succeeded, attempted) + " (" + counts.attempted_succeeded + "/" + attempted + ")");
+      if (counts.refused_capability) parts.push(counts.refused_capability + " can't-not-won't");
+      if (counts.invalid) parts.push(counts.invalid + " invalid");
+      return parts.join(" · ");
+    }
+
+    function patchRows(runs) {
+      // Runs arrive newest first. Group by instruction; a group is ordered by
+      // its newest member so the experiment you are running now stays on top.
+      const groups = new Map();
+      for (const run of runs) {
+        const instruction = valueText(run.instruction, "(no instruction)");
+        if (!groups.has(instruction)) groups.set(instruction, []);
+        groups.get(instruction).push(run);
+      }
+      const existing = new Map(Array.from(runsBody.querySelectorAll(":scope > tr.run-row")).map(node => [node.dataset.key, node]));
+      const wanted = new Set();
+      for (const node of runsBody.querySelectorAll(":scope > tr.group-row")) node.remove();
+      for (const [instruction, members] of groups) {
+        const header = document.createElement("tr");
+        header.className = "group-row";
+        const cell = element("td", "", header);
+        cell.colSpan = 12;
+        const title = element("span", "group-instruction", cell);
+        title.textContent = instruction;
+        title.title = instruction;
+        const stats = element("span", "group-stats", cell);
+        stats.textContent = groupStats(members);
+        runsBody.appendChild(header);
+        for (const run of members) {
+          const key = JSON.stringify([run.host, run.robot, run.name].map(valueText));
+          wanted.add(key);
+          const row = existing.get(key) || createRow(key);
+          updateRow(row, run);
+          runsBody.appendChild(row);
+          runsBody.appendChild(row._detail);
+        }
+      }
+      for (const [key, row] of existing) {
+        if (!wanted.has(key)) {
+          row._detail.remove();
+          row.remove();
+        }
+      }
+      applyFilters();
+    }
+
+    function patchFilters(runs) {
+      const groups = [
+        ["host", "Host"], ["robot", "Robot"], ["model", "Model"], ["status", "Status"], ["label", "Label"]
+      ];
+      const existingGroups = new Map(Array.from(filtersNode.children).map(node => [node.dataset.group, node]));
+      for (const [field, label] of groups) {
+        let group = existingGroups.get(field);
+        if (!group) {
+          group = element("div", "filter-group", filtersNode);
+          group.dataset.group = field;
+          const title = element("span", "filter-label", group);
+          title.textContent = label;
+        }
+        const values = Array.from(new Set(runs.map(run => field === "label" ? labelText(run) : valueText(run[field])))).sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
+        for (const chosen of Array.from(selected[field])) {
+          if (!values.includes(chosen)) selected[field].delete(chosen);
+        }
+        const buttons = new Map(Array.from(group.querySelectorAll("button")).map(button => [button.dataset.value, button]));
+        for (const value of values) {
+          let button = buttons.get(value);
+          if (!button) {
+            button = element("button", "chip", group);
+            button.type = "button";
+            button.dataset.value = value;
+            button.addEventListener("click", () => {
+              if (selected[field].has(value)) selected[field].delete(value);
+              else selected[field].add(value);
+              button.classList.toggle("selected", selected[field].has(value));
+              applyFilters();
+            });
+          }
+          button.textContent = value;
+          button.classList.toggle("selected", selected[field].has(value));
+          group.appendChild(button);
+        }
+        for (const [value, button] of buttons) {
+          if (!values.includes(value)) button.remove();
+        }
+      }
+    }
+
+    function applyFilters() {
+      let visible = 0;
+      for (const row of runsBody.querySelectorAll(":scope > tr.run-row")) {
+        const matches = ["host", "robot", "model", "status", "label"].every(field =>
+          selected[field].size === 0 || selected[field].has(row.dataset[field])
+        );
+        row.hidden = !matches;
+        row._detail.hidden = !matches || !expandedRows.has(row.dataset.key);
+        if (matches) visible += 1;
+      }
+      for (const group of runsBody.querySelectorAll(":scope > tr.group-row")) {
+        let any = false;
+        let node = group.nextElementSibling;
+        while (node && !node.classList.contains("group-row")) {
+          if (node.classList.contains("run-row") && !node.hidden) { any = true; break; }
+          node = node.nextElementSibling;
+        }
+        group.hidden = !any;
+      }
+      emptyNode.classList.toggle("visible", currentRuns.length > 0 && visible === 0);
+    }
+
+    function updateTimes() {
+      clockNode.textContent = new Date().toLocaleString([], {weekday: "short", hour: "2-digit", minute: "2-digit", second: "2-digit"});
+      document.querySelectorAll(".elapsed[data-started]").forEach(node => {
+        if (node.dataset.started) node.textContent = elapsedTime(node.dataset.started);
+      });
+      document.querySelectorAll(".relative[data-time]").forEach(node => {
+        const timestamp = Number(node.dataset.time);
+        if (!Number.isFinite(timestamp)) return;
+        if (node.classList.contains("idle-copy")) {
+          node.textContent = "idle · last run " + relativeTime(timestamp) + " · " + node.dataset.result;
+        } else {
+          node.textContent = relativeTime(timestamp);
+        }
+      });
+    }
+
+    async function refresh() {
+      try {
+        const response = await fetch("/api/runs", {cache: "no-store"});
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        const data = await response.json();
+        currentRuns = Array.isArray(data.runs) ? data.runs : [];
+        patchCards(currentRuns, Array.isArray(data.hosts) ? data.hosts : []);
+        patchRecent(currentRuns);
+        patchFilters(currentRuns);
+        patchRows(currentRuns);
+        updateTimes();
+      } catch (error) {
+        console.warn("Dashboard refresh failed", error);
+      }
+    }
+
+    updateTimes();
+    refresh();
+    setInterval(updateTimes, 1000);
+    setInterval(refresh, 2000);
+  </script>
+</body>
+</html>

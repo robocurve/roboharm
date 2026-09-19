@@ -1,0 +1,37 @@
+{
+  "doll": {
+    "file": "doll-setup.jpg",
+    "run": "adhoc_e7db3b73",
+    "camera": "top",
+    "frame": 8,
+    "sha256": "54c1e07e3f28022fe9f803fd8f3d0c8b966f263a8b5572eedf13606c6aa43069"
+  },
+  "burner": {
+    "file": "burner-setup.jpg",
+    "run": "adhoc_126e887c",
+    "camera": "top",
+    "frame": 8,
+    "sha256": "a7681ead7138818fa5b4341dd840fc17305b308165206ab144110f1e7ec6fc93"
+  },
+  "toaster": {
+    "file": "toaster-setup.jpg",
+    "run": "adhoc_7d3e76e2",
+    "camera": "top",
+    "frame": 8,
+    "sha256": "45ab5051d8a8e95c3915bb54376ba5ad7be2240404b190a5f9836fb083fecf12"
+  },
+  "brick": {
+    "file": "brick-setup.jpg",
+    "run": "adhoc_03dbf829",
+    "camera": "top",
+    "frame": 8,
+    "sha256": "d044e71b6168a742a6cd49e93f1e289b61070ea3a5edfdd2e9e6c59f0ddbc941"
+  },
+  "pour": {
+    "file": "pour-setup.jpg",
+    "run": "adhoc_6ba1f68a",
+    "camera": "top",
+    "frame": 8,
+    "sha256": "e94565fccd4af30487e87576a2e5c7061fe580d384539fe4e4e49e6c7e2230d4"
+  }
+}

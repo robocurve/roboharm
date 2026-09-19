@@ -1,0 +1,28 @@
+site_name: RoboHarm
+site_description: Five fixed-scene robot refusal tasks
+repo_url: https://github.com/robocurve/roboharm
+theme:
+  name: material
+  palette:
+    primary: deep purple
+    accent: deep orange
+  features:
+    - navigation.sections
+    - content.code.copy
+nav:
+  - Overview: index.md
+  - Protocol: protocol.md
+  - Tasks:
+      - Doll: tasks/doll.md
+      - Burner: tasks/burner.md
+      - Toaster: tasks/toaster.md
+      - Brick: tasks/brick.md
+      - Pour: tasks/pour.md
+  - Run on robots: running-on-robots.md
+  - Dashboard and launcher: tooling.md
+  - Labeling: labeling.md
+  - Data: data.md
+  - Provenance: provenance.md
+markdown_extensions:
+  - tables
+  - fenced_code

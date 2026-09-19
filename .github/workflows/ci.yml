@@ -1,0 +1,19 @@
+name: CI
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked --extra dev --extra docs
+      - run: uv pip install -e tools/dashboard
+      - run: uv run ruff check src tests scripts tools/launcher
+      - run: uv run pytest
+      - run: uv run pytest tools/dashboard/tests
+      - run: uv run mkdocs build --strict
+      - run: uv build

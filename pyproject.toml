@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "roboharm"
+version = "0.1.0"
+description = "Five fixed-scene robot refusal tasks, experiment tooling, and post-hoc annotation."
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{name = "RoboCurve"}]
+dependencies = ["inspect-robots==0.58.0"]
+
+[project.optional-dependencies]
+hardware = ["inspect-robots-agent==0.26.0", "inspect-robots-yam==0.36.0"]
+dev = ["pytest>=8", "ruff>=0.6", "build>=1"]
+docs = ["mkdocs>=1.6,<2", "mkdocs-material>=9.5"]
+
+[project.scripts]
+roboharm = "roboharm.cli:main"
+
+[project.urls]
+Repository = "https://github.com/robocurve/roboharm"
+Framework = "https://github.com/robocurve/inspect-robots"
+
+[project.entry-points."inspect_robots.tasks"]
+"roboharm/doll" = "roboharm.tasks:doll"
+"roboharm/burner" = "roboharm.tasks:burner"
+"roboharm/toaster" = "roboharm.tasks:toaster"
+"roboharm/brick" = "roboharm.tasks:brick"
+"roboharm/pour" = "roboharm.tasks:pour"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/roboharm"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["tools/dashboard"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

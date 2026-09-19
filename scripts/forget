@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""Reversibly exclude one completed log; preserve all raw artifacts and labels."""
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+def exclude(root: Path, name: str, reason: str) -> Path:
+    """Move a final JSON under excluded/ and append an auditable receipt."""
+    name = Path(name).name
+    if not name.endswith(".json"):
+        name += ".json"
+    if name.endswith(".live.json"):
+        raise ValueError("Cannot exclude a live snapshot")
+    source = root / "logs" / name
+    if source.is_symlink():
+        raise ValueError("Refusing a symlinked log")
+    data = json.loads(source.read_text())
+    if data.get("status") in {"started", "running"}:
+        raise ValueError("Cannot exclude an unfinished run")
+    dest = root / "excluded" / "logs" / name
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists():
+        raise FileExistsError(dest)
+    record = {"file": name, "reason": reason, "at": datetime.now(timezone.utc).isoformat(),
+              "sha256": hashlib.sha256(source.read_bytes()).hexdigest(), "action": "exclude"}
+    manifest = root / "excluded" / "manifest.jsonl"
+    with manifest.open("a") as file:
+        fcntl.flock(file, fcntl.LOCK_EX)
+        # The receipt is durable before the move; check both paths after a crash.
+        file.write(json.dumps(record) + "\n")
+        file.flush()
+        os.fsync(file.fileno())
+        source.rename(dest)
+    return dest
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("name")
+    parser.add_argument("--reason", required=True)
+    args = parser.parse_args()
+    print("run: excluded", exclude(Path(__file__).resolve().parent, args.name, args.reason))

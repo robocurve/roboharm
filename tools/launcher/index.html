@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RoboHarm launcher</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#0f1115; --card:#171a21; --line:#2a2f3a; --fg:#e6e6e6; --dim:#8b93a3; --ok:#3ecf8e; --warn:#f5b342; --bad:#ff5f6d; --acc:#5b9cff; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  header { display:flex; align-items:baseline; gap:18px; padding:14px 22px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:18px; margin:0; font-weight:600; }
+  header .meta { color:var(--dim); font-size:13px; }
+  header a { color:var(--acc); text-decoration:none; }
+  .models { display:flex; gap:6px; margin-left:auto; }
+  .models button { background:#20242e; color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:7px 12px; cursor:pointer; font-size:14px; }
+  .models button.on { background:var(--acc); border-color:var(--acc); color:#fff; }
+  .models button .health { display:inline-block; width:8px; height:8px; border-radius:50%; margin-left:6px; background:var(--dim); vertical-align:middle; }
+  .health.ok { background:var(--ok) !important; } .health.bad { background:var(--bad) !important; }
+  main { display:grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap:14px; padding:16px 22px; }
+  .robot { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; display:flex; flex-direction:column; gap:10px; }
+  .robot .top { display:flex; align-items:center; gap:10px; }
+  .robot h2 { margin:0; font-size:17px; font-weight:600; }
+  .robot .host { color:var(--dim); font-size:13px; }
+  .phase { margin-left:auto; font-size:13px; padding:3px 10px; border-radius:999px; border:1px solid var(--line); color:var(--dim); white-space:nowrap; }
+  .phase.idle { color:var(--dim); } .phase.busy { color:var(--warn); border-color:var(--warn); }
+  .phase.prompt { color:#fff; background:var(--acc); border-color:var(--acc); }
+  .phase.finished { color:var(--ok); border-color:var(--ok); }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:6px 6px; border-top:1px solid var(--line); vertical-align:middle; }
+  th { color:var(--dim); font-weight:500; font-size:12px; border-top:none; }
+  td.n { text-align:center; font-variant-numeric:tabular-nums; width:52px; }
+  td.n.sel { font-weight:700; color:#fff; }
+  td.n .lab { color:var(--dim); font-size:11px; }
+  .robot.off { opacity:.55; filter:saturate(.45); }
+  .robot.off .go, .robot.off .sm { pointer-events:none; }
+  .oos { margin-left:8px; font-size:12px; padding:3px 9px; border-radius:999px;
+         border:1px solid #6e4a12; background:#2b1d05; color:#e8b339; white-space:nowrap; }
+  .note { margin:6px 0 0; padding:7px 9px; border-left:3px solid #d29922;
+          background:#241c07; color:#e8d9a8; font-size:12px; line-height:1.45;
+          border-radius:0 4px 4px 0; }
+  tr.instr { cursor:pointer; }
+  tr.arch td { opacity:.5; }
+  tr.arch td.text::before { content:"— "; color:var(--dim); }
+  .tag { font-size:10px; border:1px solid var(--dim); border-radius:3px; padding:0 3px; color:var(--dim); vertical-align:middle; }
+  tr.instr:hover td { background:#1d2129; }
+  tr.instr.on td { background:#1f2a3f; }
+  tr.instr td.text::before { content:"○ "; color:var(--dim); }
+  tr.instr.on td.text::before { content:"● "; color:var(--acc); }
+  .bar { height:4px; background:#262b36; border-radius:2px; margin-top:4px; overflow:hidden; }
+  .bar i { display:block; height:100%; background:var(--ok); }
+  .actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  button.go { background:var(--ok); color:#06261a; border:none; border-radius:8px; padding:9px 16px; font-weight:700; cursor:pointer; font-size:15px; }
+  button.go:disabled { background:#2a2f3a; color:var(--dim); cursor:not-allowed; }
+  button.sm { background:#20242e; color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:7px 11px; cursor:pointer; font-size:13px; }
+  button.sm.keep { border-color:var(--ok); color:var(--ok); } button.sm.del { border-color:var(--bad); color:var(--bad); }
+  button.sm.end { border-color:var(--warn); color:var(--warn); }
+  button.sm:disabled { opacity:.35; cursor:not-allowed; }
+  .last { font-size:13px; color:var(--dim); }
+  .last b { color:var(--fg); font-weight:600; }
+  .last .ok { color:var(--ok); } .last .bad { color:var(--bad); } .last .warn { color:var(--warn); }
+  .last a { color:var(--acc); text-decoration:none; }
+  details { font-size:12px; }
+  details summary { color:var(--dim); cursor:pointer; }
+  pre { background:#0b0d11; border:1px solid var(--line); border-radius:8px; padding:8px; max-height:220px; overflow:auto; font-size:11.5px; line-height:1.35; margin:6px 0 0; white-space:pre-wrap; }
+  .msg { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); background:#20242e; border:1px solid var(--line); padding:10px 16px; border-radius:10px; font-size:14px; display:none; max-width:80vw; }
+  .msg.bad { border-color:var(--bad); }
+  .other { color:var(--warn); font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>RoboHarm launcher</h1>
+  <span class="meta" id="meta">loading</span>
+  <a class="meta" id="dashlink" href="#" target="_blank">labels dashboard</a>
+  <div class="models" id="models"></div>
+</header>
+<main id="robots"></main>
+<div class="msg" id="msg"></div>
+<script>
+const $ = (s, el=document) => el.querySelector(s);
+let S = null;
+let model = localStorage.getItem('sb.model') || 'astra';
+const chosen = JSON.parse(localStorage.getItem('sb.instr2') || '{}');
+// Resolve the labels dashboard against the host this page came from, so the
+// link works for LAN visitors and Tailscale visitors alike.
+function dashBase() {
+  const d = S.dashboard || ':8301';
+  return d.startsWith(':') ? `${location.protocol}//${location.hostname}${d}` : d;
+}
+const openTail = {};
+
+function say(text, bad=false) {
+  const m = $('#msg'); m.textContent = text; m.className = 'msg' + (bad ? ' bad' : ''); m.style.display = 'block';
+  clearTimeout(say.t); say.t = setTimeout(() => m.style.display = 'none', bad ? 6000 : 3000);
+}
+async function post(path, body) {
+  const r = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const j = await r.json(); say(j.message, !j.ok); if (j.ok) refresh(); return j;
+}
+function phaseClass(p) {
+  if (p === 'idle') return 'idle';
+  if (p === 'awaiting keep/delete') return 'prompt';
+  if (p === 'finished') return 'finished';
+  if (p.startsWith('unknown')) return 'idle';
+  return 'busy';
+}
+function fmtLast(l) {
+  if (!l) return '<span class="last">no saved runs yet</span>';
+  let st;
+  if (l.status === 'error') st = `<span class="bad">error</span>`;
+  else if (l.termination === 'done') st = `<span class="ok">completed, reported done</span>`;
+  else if (l.termination === 'give_up') st = `<span class="warn">completed, gave up</span>`;
+  else st = `<span class="ok">${l.status}${l.termination ? ', ' + l.termination : ''}</span>`;
+  const dur = l.duration_s ? `${Math.round(l.duration_s/60)} min` : '';
+  const lab = l.label ? `label: <b>${l.label}</b>` : `<span class="warn">unlabeled</span>`;
+  const when = l.completed_at ? new Date(l.completed_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
+  const err = l.error ? `<div class="bad">${String(l.error).slice(0, 160)}</div>` : '';
+  return `<div class="last">last saved: ${st} · ${l.model || ''} · ${dur} · ${when} · ${lab} · <a href="${dashBase()}${l.review}" target="_blank">review</a>${err}</div>`;
+}
+function render() {
+  $('#meta').textContent = `${S.total_finished} saved rollouts · ${S.generated_at}` + (S.dashboard_error ? ' · ' + S.dashboard_error : '');
+  $('#dashlink').href = dashBase();
+  $('#models').innerHTML = S.model_order.map(k => {
+    const h = k === 'molmoact2' ? `<span class="health ${Object.values(S.molmo).every(Boolean) ? 'ok' : 'bad'}" title="${esc(Object.entries(S.molmo).map(([host, ok]) => `${host}: ${ok ? 'ready' : 'unreachable'}`).join(', '))}"></span>` : '';
+    return `<button class="${k===model?'on':''}" data-m="${k}">${S.models[k]}${h}</button>`;
+  }).join('');
+  $('#models').querySelectorAll('button').forEach(b => b.onclick = () => { model = b.dataset.m; localStorage.setItem('sb.model', model); render(); });
+
+  $('#robots').innerHTML = S.robots.map(r => {
+    const sel = chosen[r.robot] && r.instructions.includes(chosen[r.robot]) ? chosen[r.robot] : r.instructions[0];
+    chosen[r.robot] = sel;
+    const off = !!r.offline;
+    const busy = !["idle", "finished"].includes(r.phase);
+    const byHand = r.phase.startsWith("running (started");
+    const atPrompt = r.phase === 'awaiting keep/delete';
+    const rowFor = (ins) => {
+      const c = r.counts[ins];
+      const cells = S.model_order.map(mk => {
+        const x = c[mk]; const pct = Math.min(100, 100 * x.done / S.target);
+        return `<td class="n ${mk===model?'sel':''}" title="${x.labeled} labeled, ${x.errors} errored">${x.done}<div class="bar"><i style="width:${pct}%"></i></div><div class="lab">${x.labeled}/${x.done} lab</div></td>`;
+      }).join('');
+      return `<tr class="instr ${ins===sel?'on':''}" data-robot="${r.robot}" data-i="${encodeURIComponent(ins)}"><td class="text">${ins}</td>${cells}</tr>`;
+    };
+    const rows = r.instructions.map(ins => rowFor(ins)).join('');
+    const other = r.other_instructions.length ? `<div class="other">also on this robot: ${r.other_instructions.map(x => `"${x}"`).join(', ')} (not in the task list)</div>` : '';
+    const note = (r.offline || r.note) ? `<div class="note">${esc(r.offline || r.note)}</div>` : '';
+    const live = r.live.length ? ` · live log ${r.live.join(', ')}` : '';
+    const molmoBad = model === 'molmoact2' && !S.molmo[r.host];
+    return `<section class="robot${off ? ' off' : ''}" data-robot="${r.robot}">
+      <div class="top"><h2>${r.robot}</h2><span class="host">${r.host}</span>${off ? `<span class="oos">out of service</span>` : ''}<span class="phase ${phaseClass(r.phase)}">${r.phase}${live}</span></div>
+      <table><thead><tr><th>instruction</th>${S.model_order.map(k => `<th style="text-align:center">${S.models[k].replace('gpt-6-','').replace('claude-','')}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>
+      ${note}
+      ${other}
+      <div class="actions">
+        <button class="go" data-act="launch" ${off || busy || atPrompt || molmoBad ? 'disabled' : ''} title="${off ? esc(r.offline) : molmoBad ? 'MolmoAct2 server on ' + r.host + ' is not answering on :8202' : ''}">Run ${S.models[model]}</button>
+        <button class="sm end" data-act="end" ${!byHand && (r.phase === 'episode running' || r.phase === 'running') ? '' : 'disabled'} title="press a key in the run terminal: parks the arms and ends the episode">End episode</button>
+        <button class="sm keep" data-act="keep" ${atPrompt ? '' : 'disabled'}>Keep</button>
+        <button class="sm del" data-act="delete" ${atPrompt ? '' : 'disabled'}>Exclude</button>
+        <button class="sm" data-act="ctrlc" ${busy && !byHand ? '' : 'disabled'} title="Ctrl-C: during the episode this parks the arms and saves; after 'rrd:' it stops the hung exit and shows the keep prompt">Ctrl-C</button>
+        ${r.phase === 'finished' ? `<button class="sm" data-act="clear">Dismiss</button>` : ''}
+      </div>
+      ${fmtLast(r.last)}
+      ${byHand ? `<div class="last">started from a terminal; use that terminal for keys and the keep prompt</div>` : ''}
+      ${r.pane.exists ? `<details ${openTail[r.robot] ? 'open' : ''} data-robot="${r.robot}"><summary>terminal output</summary><pre>${esc(r.pane.tail)}</pre></details>` : ''}
+    </section>`;
+  }).join('');
+
+  document.querySelectorAll('tr.instr').forEach(tr => tr.onclick = () => {
+    chosen[tr.dataset.robot] = decodeURIComponent(tr.dataset.i); localStorage.setItem('sb.instr2', JSON.stringify(chosen)); render();
+  });
+  document.querySelectorAll('.robot button[data-act]').forEach(b => b.onclick = async () => {
+    const robot = b.closest('.robot').dataset.robot, act = b.dataset.act;
+    if (act === 'launch') {
+      const ins = chosen[robot];
+      if (!confirm(`Start on ${robot}:\n\n${S.models[model]}\n"${ins}"\n\nThe arms will move. Stand clear.`)) return;
+      b.disabled = true; await post('/api/launch', {robot, instruction: ins, model});
+    } else if (act === 'clear') await post('/api/clear', {robot});
+    else {
+      if (act === 'delete' && !confirm(`Exclude this rollout on ${robot}? This removes its log, videos and transcript.`)) return;
+      await post('/api/key', {robot, key: act});
+    }
+  });
+  document.querySelectorAll('details[data-robot]').forEach(d => d.ontoggle = () => openTail[d.dataset.robot] = d.open);
+  document.querySelectorAll('pre').forEach(p => p.scrollTop = p.scrollHeight);
+}
+function esc(s) { return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+async function refresh() {
+  try { S = await (await fetch('/api/state')).json(); render(); }
+  catch (e) { $('#meta').textContent = 'launcher unreachable: ' + e; }
+}
+refresh(); setInterval(refresh, 5000);
+</script>
+</body>
+</html>

@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# One attended rollout. Copy this file and forget into each robot directory.
+set -u
+cd "$(dirname "$0")" || exit 1
+[[ -f robot.env ]] || { echo "Missing robot.env; copy config/robot.env.example" >&2; exit 2; }
+set -a
+source ./robot.env
+set +a
+: "${INSPECT_ROBOTS_BIN:?Set INSPECT_ROBOTS_BIN in robot.env}"
+: "${INSPECT_ROBOTS_CONFIG:?Set INSPECT_ROBOTS_CONFIG in robot.env}"
+: "${ROBOT_DOCS_DIR:?Set ROBOT_DOCS_DIR in robot.env}"
+iface=joints
+if grep -qE '^[[:space:]]*control_interface[[:space:]]*=[[:space:]]*eef_pos' "$INSPECT_ROBOTS_CONFIG" 2>/dev/null; then iface=eef; fi
+for a in "$@"; do [[ "$a" == control_interface=eef_pos ]] && iface=eef; done
+extra=()
+for f in "$ROBOT_DOCS_DIR/facts.md" "$ROBOT_DOCS_DIR/advice-$iface.md"; do
+  [[ -s "$f" ]] || { echo "Missing robot documentation: $f" >&2; exit 2; }
+done
+extra=(-E "docs_extra=$(cat "$ROBOT_DOCS_DIR/facts.md" "$ROBOT_DOCS_DIR/advice-$iface.md")")
+[[ -n "${RERUN_CONNECT:-}" ]] && extra+=(--rerun-connect "$RERUN_CONNECT")
+if [[ "${ROBOT_RUN_DRY:-}" == 1 ]]; then
+  printf '%q ' "$INSPECT_ROBOTS_BIN" run --no-prompt --log-dir logs "${extra[@]}" "$@"
+  printf '\n'
+  exit 0
+fi
+[[ -t 0 ]] || { echo "Run in an attended terminal or tmux" >&2; exit 2; }
+command -v flock >/dev/null || { echo "Install util-linux (flock) on the robot host" >&2; exit 2; }
+exec 9>.roboharm-run.lock
+flock -n 9 || { echo "Another rollout owns this robot" >&2; exit 1; }
+mkdir -p logs
+before=$(mktemp)
+find logs -maxdepth 1 -name '*.json' ! -name '*.live.json' | sort > "$before"
+trap 'rm -f "$before"' EXIT
+"$INSPECT_ROBOTS_BIN" run --no-prompt --log-dir logs "${extra[@]}" "$@" </dev/tty &
+child=$!
+ints=0
+on_int() {
+  ints=$((ints + 1))
+  if (( ints >= 3 )); then
+    echo "Forcing process exit at operator request."
+    kill -KILL "$child" 2>/dev/null || true
+  elif (( ints == 2 )); then
+    echo "Terminating process at operator request."
+    kill -TERM "$child" 2>/dev/null || true
+  else
+    echo "Forwarding interrupt; wait for the robot to park."
+    kill -INT "$child" 2>/dev/null || true
+  fi
+}
+trap on_int INT
+rc=0
+while true; do
+  wait "$child"; rc=$?
+  kill -0 "$child" 2>/dev/null || break
+done
+trap - INT
+while IFS= read -r log; do
+  echo
+  read -r -p "keep this rollout ($(basename "${log%.json}"))? [Y/n] " answer </dev/tty || answer=y
+  case "$answer" in
+    n|N|no|NO) ./forget "$log" --reason "operator excluded at keep prompt" ;;
+    *) echo "run: kept $log (label on the dashboard)" ;;
+  esac
+done < <(comm -13 "$before" <(find logs -maxdepth 1 -name '*.json' ! -name '*.live.json' | sort))
+exit "$rc"
