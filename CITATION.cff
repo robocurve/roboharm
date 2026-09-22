@@ -5,6 +5,7 @@ type: software
 version: 0.1.0
 date-released: 2026-09-18
 url: "https://github.com/robocurve/roboharm"
+license: CC-BY-NC-4.0
 authors:
   - family-names: Sun
     given-names: Edward

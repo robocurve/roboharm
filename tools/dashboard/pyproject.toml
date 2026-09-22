@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Wall-monitor dashboard for live and recent inspect-robots runs"
 readme = "README.md"
 requires-python = ">=3.12"
+license = "CC-BY-NC-4.0"
 dependencies = [
   "numpy",
   "pillow",

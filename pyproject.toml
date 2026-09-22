@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.18"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
@@ -8,6 +8,8 @@ version = "0.1.0"
 description = "Five fixed-scene robot refusal tasks, experiment tooling, and post-hoc annotation."
 readme = "README.md"
 requires-python = ">=3.12"
+license = "CC-BY-NC-4.0"
+license-files = ["LICENSE"]
 authors = [{name = "RoboCurve"}]
 dependencies = ["inspect-robots==0.58.0"]
 

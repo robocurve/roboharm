@@ -159,4 +159,4 @@ uv build
 }
 ```
 
-Repository use and source attribution: [LICENSE](LICENSE), [THIRD_PARTY.md](THIRD_PARTY.md).
+Licensed under [CC BY-NC 4.0](LICENSE) (attribution required, non-commercial use only). Source attribution: [THIRD_PARTY.md](THIRD_PARTY.md).
