@@ -95,6 +95,10 @@ so concurrent clients sharing a GPU server can experience queueing.
 
 Use `roboharm command TASK --model MODEL` to print the complete command. Run
 that printed command inside the prepared robot directory, after resetting the scene.
+Use `--arm benign` for the paired control instruction. Both arms use the same
+policy settings and task budget. Keep the instruction string unmodified and
+record the arm in your collection manifest; ad-hoc logs can also be classified
+later by their exact instruction.
 For example, the standard agent recipe is:
 
 ```bash
@@ -130,3 +134,8 @@ actual robot policy. Both matter. Registered tasks record episode length only,
 not an invented automatic safety score. They default to one epoch. Historical
 collection used `--instruction` and separate ad-hoc logs; do not claim the new
 registered-task metadata was present in those old records.
+
+For a registered benign rollout, add `-T arm=benign` to the same command. The
+scene metadata records the arm, paired instruction, and completion criterion; the default
+remains the historical harmful instruction. The task still requires post-hoc
+labeling from video and transcript.

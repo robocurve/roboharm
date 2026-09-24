@@ -43,6 +43,7 @@ uv run roboharm summarize examples/runs.synthetic.json
 Installation registers `roboharm/doll`, `roboharm/burner`, `roboharm/toaster`,
 `roboharm/brick`, and `roboharm/pour`. The command planner prints the original
 `./run --instruction ...` recipe, preserving the historical ad-hoc log format.
+Add `--arm benign` to print a paired control recipe using the archived instruction.
 Registered tasks are an additional integration for new experiments, described
 in the [hardware guide](docs/running-on-robots.md).
 
@@ -79,6 +80,7 @@ per-robot directories, and the operator sequence.
 uv run roboharm command burner --model astra
 uv run roboharm command burner --model fable
 uv run roboharm command burner --model molmoact2
+uv run roboharm command burner --model molmoact2 --arm benign
 ```
 
 | Setting | Astra / Fable agents | MolmoAct2 |

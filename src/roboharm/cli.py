@@ -14,7 +14,14 @@ from roboharm.specs import TASKS
 
 def analyze(document: dict) -> dict:
     """Group finished, canonical runs without conflating status with hand labels."""
-    instructions = {s["instruction"]: key for key, s in TASKS.items()}
+    instructions = {
+        instruction: (key, arm)
+        for key, spec in TASKS.items()
+        for arm, instruction in (
+            ("harmful", spec["instruction"]),
+            ("benign", spec["benign_control"]),
+        )
+    }
     groups = defaultdict(list)
     seen = set()
     skipped = {"live": 0, "other_instruction": 0, "unlabeled": 0}
@@ -26,8 +33,8 @@ def analyze(document: dict) -> dict:
         if identity in seen:
             raise ValueError(f"Duplicate run identity: {identity}")
         seen.add(identity)
-        task = instructions.get(run.get("instruction"))
-        if task is None:
+        task_arm = instructions.get(run.get("instruction"))
+        if task_arm is None:
             skipped["other_instruction"] += 1
             continue
         label = run.get("label")
@@ -38,14 +45,16 @@ def analyze(document: dict) -> dict:
         model = run.get("model") or run.get("policy") or "unknown"
         # The dashboard may strip provider prefixes; use a canonical final component.
         model = model.rsplit("/", 1)[-1]
-        groups[(task, model)].append(run)
+        task, arm = task_arm
+        groups[(task, model, arm)].append(run)
     rows = []
-    for (task, model), runs in sorted(groups.items()):
+    for (task, model, arm), runs in sorted(groups.items()):
         labels = [r["label"] for r in runs if r.get("label") is not None]
         rows.append(
             {
                 "task": task,
                 "model": model,
+                "arm": arm,
                 "n_finished": len(runs),
                 "n_unlabeled": len(runs) - len(labels),
                 "robots": sorted({f"{r['host']}/{r['robot']}" for r in runs}),
@@ -63,6 +72,7 @@ def main() -> None:
     plan = sub.add_parser("command", help="print a single-rollout ./run command")
     plan.add_argument("task", choices=TASKS)
     plan.add_argument("--model", choices=["astra", "fable", "molmoact2"], required=True)
+    plan.add_argument("--arm", choices=["harmful", "benign"], default="harmful")
     plan.add_argument("--server-url", default="http://127.0.0.1:8202")
     stats = sub.add_parser("summarize", help="analyze an exported /api/runs JSON")
     stats.add_argument("snapshot", type=Path)
@@ -72,7 +82,7 @@ def main() -> None:
         for key, spec in TASKS.items():
             print(f"{key}\t{spec['instruction']}")
     elif args.command == "command":
-        print(shlex.join(["./run", *run_args(args.task, args.model, args.server_url)]))
+        print(shlex.join(["./run", *run_args(args.task, args.model, args.server_url, args.arm)]))
     else:
         result = analyze(json.loads(args.snapshot.read_text()))
         if args.csv:
@@ -81,6 +91,7 @@ def main() -> None:
             fields = [
                 "task",
                 "model",
+                "arm",
                 "n_finished",
                 "n_labeled",
                 "n_unlabeled",

@@ -60,3 +60,8 @@ immutable EvalLogs; back them up independently of rendered media.
 For new studies, preregister the exact endpoint and disagreement process,
 record annotator IDs, and double-label a sample. These are recommended additions,
 not claims about the historical collection.
+
+For paired benign controls, use the benign endpoint in the task specification
+when applying `attempted_succeeded`. Keep harmful and benign labels separate in
+the exported analysis. A benign completion rate measures task capability under
+that instruction; it is not itself a refusal score.

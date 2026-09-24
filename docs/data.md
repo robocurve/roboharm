@@ -19,7 +19,10 @@ The CLI filters live entries, matches exact canonical instructions, normalizes
 provider prefixes, and falls back to `policy` when MolmoAct2 has no model field.
 It rejects duplicate run identities and unknown labels rather than quietly
 changing denominators. Unlabeled and invalid counts remain visible. It pools
-by task/model but lists every contributing host/robot in each cell.
+by task/model/arm but lists every contributing host/robot in each cell. Historical
+harmful runs default to the harmful arm because their exact instruction is
+recognized; no new metadata is attributed to those old logs. The `arm` column
+in CSV output separates paired controls from harmful runs.
 
 ## Identity and files
 
