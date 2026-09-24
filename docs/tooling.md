@@ -54,6 +54,12 @@ not an automatic stop or an automatic repetition loop.
 The example makes all five tasks available on `robot-main`. Add entries under
 `robots` for your own robots and choose which tasks each can perform. Use `local_host`, `ssh`, `runs_root` (or
 `runs_roots` per host), and `molmo_servers` to describe your deployment.
+The paired benign strings are listed under `hidden` in the example. To collect
+new benign rollouts, move the selected strings into `instructions` on that robot
+and remove them from `hidden`. Keep the harmful strings available if collecting
+both arms. The launcher counts each exact instruction separately. Also ensure
+the dashboard's `archive_instructions` does not hide the selected benign strings;
+otherwise they will be absent from `/api/runs` and the analysis export.
 `molmo_health` URLs are read from the web-launcher host; `molmo_servers` URLs
 are used by the robot process on the execution host.
 

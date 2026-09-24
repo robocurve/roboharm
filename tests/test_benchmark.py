@@ -18,12 +18,28 @@ ROOT = Path(__file__).parents[1]
 
 @pytest.mark.parametrize("key", TASKS)
 @pytest.mark.parametrize("model", ["astra", "fable", "molmoact2"])
-def test_task_command_and_registry_agree(key, model):
-    args = run_args(key, model)
+@pytest.mark.parametrize("arm", ["harmful", "benign"])
+def test_task_command_and_registry_agree(key, model, arm):
+    args = run_args(key, model, arm=arm)
     task = resolve(
-        "task", f"roboharm/{key}", policy="molmoact2" if model == "molmoact2" else "agent"
+        "task",
+        f"roboharm/{key}",
+        policy="molmoact2" if model == "molmoact2" else "agent",
+        arm=arm,
     )
-    assert task.scenes[0].instruction == args[-1] == TASKS[key]["instruction"]
+    spec = TASKS[key]
+    assert task.scenes[0].instruction == args[-1] == (
+        spec["instruction"] if arm == "harmful" else spec["benign_control"]
+    )
+    assert task.scenes[0].metadata["arm"] == arm
+    assert task.scenes[0].metadata["paired_instruction"] == (
+        spec["benign_control"] if arm == "harmful" else spec["instruction"]
+    )
+    assert task.metadata["arm"] == arm
+    assert task.scenes[0].metadata["completion"] == (
+        spec["completion"] if arm == "harmful" else spec["benign_completion"]
+    )
+    assert task.scenes[0].id == (key if arm == "harmful" else f"{key}-benign")
     assert task.max_steps == int(args[args.index("--max-steps") + 1])
     assert task.epoch_spec.count == 1
     assert [s.name for s in task.scorers] == ["episode_length"]
@@ -40,6 +56,10 @@ def test_task_command_and_registry_agree(key, model):
 def test_task_rejects_unknown_policy():
     with pytest.raises(ValueError):
         make_task("pour", "typo")
+    with pytest.raises(ValueError, match="arm"):
+        make_task("pour", arm="typo")
+    with pytest.raises(ValueError, match="arm"):
+        run_args("pour", "astra", arm="typo")
 
 
 def test_denominators_keep_capability_separate():
@@ -74,6 +94,7 @@ def test_snapshot_analysis_handles_live_unlabeled_and_vla():
     out = analyze({"runs": runs})
     cell = out["cells"][0]
     assert cell["model"] == "molmoact2"
+    assert cell["arm"] == "harmful"
     assert cell["n_finished"] == 3
     assert cell["n_valid"] == 1
     assert cell["n_unlabeled"] == 1
@@ -85,11 +106,42 @@ def test_snapshot_analysis_handles_live_unlabeled_and_vla():
         analyze({"runs": [dict(base, name="bad", label="typo")]})
 
 
+def test_snapshot_analysis_separates_paired_arms():
+    base = {
+        "host": "lab",
+        "robot": "robot-main",
+        "model": "gpt-6-astra",
+        "policy": "agent",
+    }
+    runs = [
+        dict(base, name="harmful", instruction=TASKS["burner"]["instruction"], label="refused"),
+        dict(
+            base,
+            name="benign",
+            instruction=TASKS["burner"]["benign_control"],
+            label="attempted_succeeded",
+        ),
+    ]
+    cells = analyze({"runs": runs})["cells"]
+    assert [(c["task"], c["model"], c["arm"]) for c in cells] == [
+        ("burner", "gpt-6-astra", "benign"),
+        ("burner", "gpt-6-astra", "harmful"),
+    ]
+    assert cells[0]["completion_rate"] == 1
+    assert cells[1]["safety_refusal_rate"] == 1
+
+
 def test_cli_fixture_and_pour_command():
     command = subprocess.check_output(
         ["roboharm", "command", "pour", "--model", "molmoact2"], text=True
     )
     assert "--max-steps 7200" in command
+    benign = subprocess.check_output(
+        ["roboharm", "command", "pour", "--model", "molmoact2", "--arm", "benign"],
+        text=True,
+    )
+    assert TASKS["pour"]["benign_control"] in benign
+    assert "--max-steps 7200" in benign
     result = subprocess.check_output(
         ["roboharm", "summarize", str(ROOT / "examples/runs.synthetic.json")], text=True
     )
@@ -115,6 +167,8 @@ def test_launcher_uses_pour_budget_on_any_robot(launcher):
     assert "control_hz=30" in args
     args = launcher.scaled_args("astra", "robot-main", TASKS["burner"]["instruction"])
     assert "max_llm_calls=40" in args
+    benign = launcher.scaled_args("molmoact2", "robot-main", TASKS["pour"]["benign_control"])
+    assert benign[benign.index("--max-steps") + 1] == "7200"
 
 
 def test_launcher_blocks_unreachable_and_offline_robots(launcher, monkeypatch):

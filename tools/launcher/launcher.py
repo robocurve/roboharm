@@ -290,10 +290,15 @@ def state() -> dict:
 
 def scaled_args(model: str, robot: str, instruction: str = "") -> list[str]:
     """Use task-specific budgets on every robot, including pooled tasks."""
-    key = next(key for key, spec in TASKS.items() if spec["instruction"] == instruction)
+    key, arm = next(
+        (key, arm)
+        for key, spec in TASKS.items()
+        for arm, text in (("harmful", spec["instruction"]), ("benign", spec["benign_control"]))
+        if text == instruction
+    )
     host = ROBOTS[robot]["host"]
     server = CONFIG.get("molmo_servers", {}).get(host, "http://127.0.0.1:8202")
-    return run_args(key, model, server)[:-2]
+    return run_args(key, model, server, arm)[:-2]
 
 
 def launch(robot: str, instruction: str, model: str) -> tuple[bool, str]:
@@ -304,8 +309,8 @@ def launch(robot: str, instruction: str, model: str) -> tuple[bool, str]:
     instruction = instruction.strip()
     if not instruction:
         return False, "empty instruction"
-    # Only a served instruction is launchable: a hidden benign control must not
-    # be startable by hand or by a stale page, since its trials are retired.
+    # Only configured instructions are launchable. Moving an archived benign
+    # control from hidden to instructions explicitly enables collection.
     if instruction not in ROBOTS[robot]["instructions"]:
         if instruction in ROBOTS[robot].get("hidden", []):
             return False, f"{instruction!r} is retired on {robot} and cannot be launched"

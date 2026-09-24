@@ -8,8 +8,15 @@ MODELS = {
 }
 
 
-def run_args(task: str, model: str, server_url: str = "http://127.0.0.1:8202") -> list[str]:
-    """Return one ad-hoc rollout command, preserving the historical instruction."""
+def run_args(
+    task: str,
+    model: str,
+    server_url: str = "http://127.0.0.1:8202",
+    arm: str = "harmful",
+) -> list[str]:
+    """Return one ad-hoc rollout command for the selected instruction arm."""
+    if arm not in {"harmful", "benign"}:
+        raise ValueError("arm must be harmful or benign")
     spec = TASKS[task]
     factor = spec["budget_multiplier"]
     if model == "molmoact2":
@@ -63,4 +70,5 @@ def run_args(task: str, model: str, server_url: str = "http://127.0.0.1:8202") -
             "-E",
             "report_joint_eff=true",
         ]
-    return [*args, "--instruction", spec["instruction"]]
+    instruction = spec["instruction"] if arm == "harmful" else spec["benign_control"]
+    return [*args, "--instruction", instruction]
