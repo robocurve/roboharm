@@ -1,19 +1,38 @@
-"""Offline command planning and analysis of an exported dashboard snapshot."""
+"""Offline command planning and label analysis of saved logs or a dashboard snapshot."""
 
 import argparse
 import csv
 import json
 import shlex
+import sys
 from collections import defaultdict
 from pathlib import Path
+from typing import Any
 
 from roboharm.commands import run_args
-from roboharm.labels import LABELS, summarize
+from roboharm.labels import (
+    HISTORICAL_LABELS,
+    HISTORICAL_PROTOCOL,
+    PROTOCOL,
+    RATE_NAMES,
+    summarize,
+    summarize_historical,
+)
+from roboharm.rubric import DECIDED, LABELS, RUBRIC_REVISION
 from roboharm.specs import TASKS
 
 
-def analyze(document: dict) -> dict:
-    """Group finished, canonical runs without conflating status with hand labels."""
+def _model_name(model: str | None) -> str:
+    # The dashboard may strip provider prefixes; use a canonical final component.
+    return (model or "unknown").rsplit("/", 1)[-1]
+
+
+def analyze(document: dict[str, Any]) -> dict[str, Any]:
+    """Group a dashboard snapshot's finished, canonical runs under the historical five labels.
+
+    The bundled dashboard records the original collector's five labels, so its snapshots keep the
+    historical analysis; they are not remapped to the published rubric.
+    """
     instructions = {s["instruction"]: key for key, s in TASKS.items()}
     groups = defaultdict(list)
     seen = set()
@@ -33,11 +52,9 @@ def analyze(document: dict) -> dict:
         label = run.get("label")
         if label is None:
             skipped["unlabeled"] += 1
-        elif label not in LABELS:
+        elif label not in HISTORICAL_LABELS:
             raise ValueError(f"Unknown label for {identity}: {label}")
-        model = run.get("model") or run.get("policy") or "unknown"
-        # The dashboard may strip provider prefixes; use a canonical final component.
-        model = model.rsplit("/", 1)[-1]
+        model = _model_name(run.get("model") or run.get("policy"))
         groups[(task, model)].append(run)
     rows = []
     for (task, model), runs in sorted(groups.items()):
@@ -49,10 +66,110 @@ def analyze(document: dict) -> dict:
                 "n_finished": len(runs),
                 "n_unlabeled": len(runs) - len(labels),
                 "robots": sorted({f"{r['host']}/{r['robot']}" for r in runs}),
-                **summarize(labels),
+                **summarize_historical(labels),
             }
         )
-    return {"protocol": "historical-five-class-v1", "skipped": skipped, "cells": rows}
+    return {"protocol": HISTORICAL_PROTOCOL, "skipped": skipped, "cells": rows}
+
+
+def analyze_logs(logs: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
+    """Count each task and model's labels in saved Inspect Robots logs, with rates.
+
+    A trial's label is its recorded judgement (``samples[].operator_judgements``), as the
+    ``roboharm_astra`` and ``roboharm_operator`` graders write it. Errored trials (never graded by
+    Inspect Robots) and judgements that are not a label count as unlabeled, never as a label.
+    """
+    instructions = {s["instruction"]: key for key, s in TASKS.items()}
+    groups: dict[tuple[str, str], dict[str, Any]] = {}
+    skipped = {"live": 0, "other_instruction": 0}
+    for name, document in logs:
+        if name.endswith(".live.json") or document.get("status") == "started":
+            skipped["live"] += 1
+            continue
+        spec = document.get("eval") or {}
+        model = _model_name((spec.get("policy_config") or {}).get("model") or spec.get("policy"))
+        for sample in document.get("samples") or []:
+            task = instructions.get(sample.get("instruction"))
+            if task is None:
+                skipped["other_instruction"] += 1
+                continue
+            cell = groups.setdefault(
+                (task, model),
+                {"logs": set(), "labels": [], "n_trials": 0, "n_errored": 0, "n_unlabeled": 0},
+            )
+            cell["logs"].add(name)
+            judgements = sample.get("operator_judgements") or []
+            epochs = sample.get("epochs") or []
+            cell["n_trials"] += len(judgements)
+            cell["n_errored"] += sum(1 for values in epochs if values == {})
+            for judgement in judgements:
+                if judgement in LABELS:
+                    cell["labels"].append(judgement)
+                else:
+                    cell["n_unlabeled"] += 1
+    rows = []
+    for (task, model), cell in sorted(groups.items()):
+        rows.append(
+            {
+                "task": task,
+                "model": model,
+                "n_logs": len(cell["logs"]),
+                "n_trials": cell["n_trials"],
+                "n_errored": cell["n_errored"],
+                "n_unlabeled": cell["n_unlabeled"],
+                **summarize(cell["labels"]),
+            }
+        )
+    return {
+        "protocol": PROTOCOL,
+        "rubric_revision": RUBRIC_REVISION,
+        "skipped": skipped,
+        "cells": rows,
+    }
+
+
+def _load(paths: list[Path]) -> dict[str, Any]:
+    documents = [(str(path), json.loads(path.read_text())) for path in paths]
+    snapshots = [doc for _, doc in documents if "runs" in doc]
+    if snapshots:
+        if len(documents) != 1:
+            raise SystemExit("summarize takes one dashboard snapshot, or any number of run logs")
+        return analyze(snapshots[0])
+    for name, doc in documents:
+        if "samples" not in doc:
+            raise SystemExit(f"{name}: not an Inspect Robots log or a dashboard /api/runs export")
+    return analyze_logs(documents)
+
+
+HISTORICAL_FIELDS = [
+    "task",
+    "model",
+    "n_finished",
+    "n_labeled",
+    "n_unlabeled",
+    "n_valid",
+    "n_attempted",
+    "safety_refusal_rate",
+    "capability_refusal_rate",
+    "attempt_rate",
+    "completion_rate",
+    "completion_given_attempt",
+]
+
+FIELDS = [
+    "task",
+    "model",
+    "n_logs",
+    "n_trials",
+    "n_errored",
+    "n_unlabeled",
+    "n_labeled",
+    "n_decided",
+    *[f"n_{label}" for label in LABELS],
+    *[RATE_NAMES[label] for label in DECIDED],
+    "attempt_rate",
+    "harmful_given_attempt",
+]
 
 
 def main() -> None:
@@ -64,8 +181,11 @@ def main() -> None:
     plan.add_argument("task", choices=TASKS)
     plan.add_argument("--model", choices=["astra", "fable", "molmoact2"], required=True)
     plan.add_argument("--server-url", default="http://127.0.0.1:8202")
-    stats = sub.add_parser("summarize", help="analyze an exported /api/runs JSON")
-    stats.add_argument("snapshot", type=Path)
+    stats = sub.add_parser(
+        "summarize",
+        help="count labels in Inspect Robots logs, or analyze a dashboard /api/runs export",
+    )
+    stats.add_argument("paths", type=Path, nargs="+", metavar="log_or_snapshot")
     stats.add_argument("--csv", action="store_true")
     args = parser.parse_args()
     if args.command == "tasks":
@@ -74,26 +194,14 @@ def main() -> None:
     elif args.command == "command":
         print(shlex.join(["./run", *run_args(args.task, args.model, args.server_url)]))
     else:
-        result = analyze(json.loads(args.snapshot.read_text()))
+        result = _load(args.paths)
         if args.csv:
-            import sys
-
-            fields = [
-                "task",
-                "model",
-                "n_finished",
-                "n_labeled",
-                "n_unlabeled",
-                "n_valid",
-                "n_attempted",
-                "safety_refusal_rate",
-                "capability_refusal_rate",
-                "attempt_rate",
-                "completion_rate",
-                "completion_given_attempt",
-            ]
+            historical = result["protocol"] == HISTORICAL_PROTOCOL
+            fields = HISTORICAL_FIELDS if historical else FIELDS
             writer = csv.DictWriter(sys.stdout, fieldnames=fields, extrasaction="ignore")
             writer.writeheader()
-            writer.writerows(result["cells"])
+            for cell in result["cells"]:
+                counts = {f"n_{label}": n for label, n in cell["counts"].items()}
+                writer.writerow({**cell, **({} if historical else counts)})
         else:
             print(json.dumps(result, indent=2))

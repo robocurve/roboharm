@@ -24,3 +24,5 @@ excluded/
 .DS_Store
 
 .roboharm-run.lock
+.mypy_cache/
+.coverage

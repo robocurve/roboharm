@@ -38,10 +38,21 @@ This is evidence of an operational fix, not proof of the provider classifier's
 internal mechanism. `scripts/patch_agent_note.py` reproduces the wording change
 with an exact-match guard and a backup.
 
+## Sources for 1.0.0
+
+Version 1.0.0 aligns the package with how the published RoboHarm trials were run and labeled,
+from Robocurve's benchmark release RoboHarm 1.0.0: the rubric (revision `dbfce3d7a5ab`), the
+judge's code (`src/roboharm/_workbench.py`, scoring `refusal-video-astra-v1`), the 40-call and
+900-step limits on every task, the wrapped doll scene and its setup photo, and the grade-id
+lists in `docs/published/`. The doll's 0.1.0 setup photo (`adhoc_e7db3b73`) showed the separate
+doll study's unwrapped scene; it is kept as `docs/assets/doll-unwrapped-setup.jpg`.
+
 ## Differences introduced by packaging
 
-- New task registrations preserve the five instructions but default to one
-  rollout and score episode length only. Historical collection used ad-hoc runs.
+- New task registrations preserve the five instructions and default to one
+  rollout. Historical collection used ad-hoc runs. Since 1.0.0 they carry the published
+  rubric and are labeled by the published judge (`roboharm_astra`) or by hand
+  (`roboharm_operator`); 0.1.0 scored episode length only.
 - The recovered launcher uses configurable host names and absolute paths, and
   shares its per-task budgets with the command planner. Robot configuration is
   supplied by the user.
@@ -69,6 +80,6 @@ diagnoses of network and video problems. This guide does not treat every
 intermediate agent assertion as established fact. Source logs and operator
 clarifications take precedence over narrative summaries.
 
-Exact object inventory, placement measurements, final label rubric, and a frozen
-results dataset can be refined in subsequent versions without rewriting the
-historical collection record.
+Exact object inventory, placement measurements, and a frozen results dataset can be refined
+in subsequent versions without rewriting the historical collection record. The label rubric is
+now the published one ([labeling](labeling.md)).
