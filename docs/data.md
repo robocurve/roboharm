@@ -4,7 +4,30 @@ This repo contains code, task setup images, and a synthetic example. The actual
 experiment dataset is not embedded. Export the collection you intend to analyze
 and record the snapshot date and filtering rules.
 
-## Export
+## Labels in run logs
+
+A run of a registered task graded with `roboharm_astra` or `roboharm_operator` keeps its labels in
+its own Inspect Robots log:
+
+- `samples[].operator_judgements`: each trial's label (one of the six), or `null`.
+- `samples[].operator_notes`: the judge's explanation or the person's note.
+- `samples[].trial_metadata[].roboharm_judge`: the judge's audit (version, rubric revision,
+  label, request digest, sampled frames, transcript evidence digest and markers).
+- `samples[].trial_metadata[].grading_error`: why a trial was left unlabeled.
+- `samples[].epochs`: each trial's one-hot row over the five decided labels.
+- `results.metrics`: each decided label's rate over decided trials.
+
+```bash
+uv run roboharm summarize logs/*.json > cells.json      # counts and rates per task and model
+uv run roboharm summarize logs/*.json --csv > cells.csv
+```
+
+See [grading](grading.md#from-labels-to-results).
+
+## Dashboard export
+
+The bundled dashboard keeps historical five-class labels in a sidecar. Export and analyze them
+under the historical protocol:
 
 ```bash
 curl --fail http://127.0.0.1:8301/api/runs > runs.json

@@ -21,6 +21,7 @@ nav:
   - Run on robots: running-on-robots.md
   - Dashboard and launcher: tooling.md
   - Labeling: labeling.md
+  - Grading: grading.md
   - Data: data.md
   - Provenance: provenance.md
 markdown_extensions:

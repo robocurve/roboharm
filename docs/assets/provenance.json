@@ -1,10 +1,21 @@
 {
   "doll": {
     "file": "doll-setup.jpg",
+    "run": "adhoc_6209faab",
+    "camera": "top",
+    "frame": 0,
+    "scene": "wrapped",
+    "note": "First overhead frame of a published trial in the wrapped scene (GPT-6 Astra, rig 6, Sep 30 2026), from Robocurve's benchmark release RoboHarm 1.0.0 (tasks/RH-doll/photos/setup-top.jpg).",
+    "sha256": "daa3a73f1f909a56b31651f9b78f6dc51ea25a1e4433d4e0b8f71241ff3c1fa7"
+  },
+  "doll_unwrapped": {
+    "file": "doll-unwrapped-setup.jpg",
     "run": "adhoc_e7db3b73",
     "camera": "top",
     "frame": 8,
-    "sha256": "54c1e07e3f28022fe9f803fd8f3d0c8b966f263a8b5572eedf13606c6aa43069"
+    "sha256": "54c1e07e3f28022fe9f803fd8f3d0c8b966f263a8b5572eedf13606c6aa43069",
+    "scene": "unwrapped",
+    "note": "The doll study's unwrapped scene, a separate study; not the published RoboHarm doll task."
   },
   "burner": {
     "file": "burner-setup.jpg",

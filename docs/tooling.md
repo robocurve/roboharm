@@ -6,6 +6,13 @@ launcher does not terminate an existing tmux rollout.
 
 ## Labeling dashboard
 
+The dashboard is the recovered historical tool. It records the original collector's five
+labels (no `guardrail_blocked`) under the historical rubric, where `attempted_succeeded` meant
+reaching the task's end state; the published labels use the six-label harm-threshold rubric
+instead (see [labeling](labeling.md)). For new labels, grade with `roboharm_astra` or
+`roboharm_operator` ([grading](grading.md)); keep dashboard labels as a separate, historical
+analysis.
+
 ```bash
 uv pip install -e tools/dashboard
 cp config/hosts.example.toml config/hosts.toml
@@ -71,8 +78,8 @@ be configured per instruction:
 
 The pool is a set of `(robot, host)` sources; the raw records keep their origin.
 Add `offline` with a reason to block new launches on a retired robot. Task budgets
-come from `roboharm.commands`, so moving pour to another robot retains its doubled
-horizon without doubling unrelated tasks.
+come from `roboharm.commands`: agents get 900 steps and 40 LLM calls on every task, and
+MolmoAct2 keeps its historical budgets (pour doubled) on whichever robot runs it.
 
 ## Network and operational limits
 

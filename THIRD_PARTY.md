@@ -13,6 +13,10 @@
 - Setup images are frames from the RoboHarm experiment footage. Their run IDs
   are recorded in `docs/assets/provenance.json`. No human demonstration videos
   are claimed or synthesized.
+- `src/roboharm/_workbench.py` (between its VERBATIM markers), `src/roboharm/rubric.json`,
+  the wrapped doll setup photo (`docs/assets/doll-setup.jpg`) and the grade-id lists in
+  `docs/published/` are copied from Robocurve's benchmark release RoboHarm 1.0.0, which took
+  the judge from Robocurve's workbench grading code.
 - Inspect Robots, its adapters, and MolmoAct2 are external dependencies, not
   vendored here; their own licenses and access conditions apply.
 

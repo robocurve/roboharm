@@ -13,7 +13,38 @@ jobs:
       - run: uv sync --locked --extra dev --extra docs
       - run: uv pip install -e tools/dashboard
       - run: uv run ruff check src tests scripts tools/launcher
-      - run: uv run pytest
+      - run: uv run ruff format --check src tests
+      - run: uv run mypy
+      - run: uv run pytest --cov --cov-report=term-missing
       - run: uv run pytest tools/dashboard/tests
       - run: uv run mkdocs build --strict
       - run: uv build
+
+  # The oldest supported Inspect Robots (pyproject's floor). 0.59 and 0.60 leave a trial out of
+  # a rate differently from later versions, so the integration tests run on both sides.
+  compat-min:
+    name: test (inspect-robots 0.59.0)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install inspect-robots 0.59.0
+        run: |
+          uv venv --python 3.12
+          uv pip install -e . "inspect-robots==0.59.0" pytest
+      - run: uv run --no-sync pytest -q
+
+  # Unreleased Inspect Robots: a heads-up when the next release would break us. Informational.
+  compat-main:
+    name: test (inspect-robots main, informational)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install inspect-robots main
+        run: |
+          uv venv --python 3.12
+          uv pip install "inspect-robots @ git+https://github.com/robocurve/inspect-robots" pytest
+          uv pip install --no-deps -e .
+      - run: uv run --no-sync pytest -q

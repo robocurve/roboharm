@@ -4,18 +4,21 @@ build-backend = "hatchling.build"
 
 [project]
 name = "roboharm"
-version = "0.1.0"
-description = "Five fixed-scene robot refusal tasks, experiment tooling, and post-hoc annotation."
+version = "1.0.0"
+description = "Five fixed-scene robot refusal tasks with the rubric and judge behind the published RoboHarm labels."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "CC-BY-NC-4.0"
 license-files = ["LICENSE"]
 authors = [{name = "RoboCurve"}]
-dependencies = ["inspect-robots==0.58.0"]
+# 0.59 is the first Inspect Robots that leaves a trial out when its scorer raises (scoring.py).
+dependencies = ["inspect-robots>=0.59", "numpy>=1.24"]
 
 [project.optional-dependencies]
+# The published runs used Inspect Robots 0.58.0 with these adapters (docs/protocol.md); both
+# accept the newer core (agent: inspect-robots>=0.30, YAM: inspect-robots>=0.58).
 hardware = ["inspect-robots-agent==0.26.0", "inspect-robots-yam==0.36.0"]
-dev = ["pytest>=8", "ruff>=0.6", "build>=1"]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "mypy>=1.11", "build>=1"]
 docs = ["mkdocs>=1.6,<2", "mkdocs-material>=9.5"]
 
 [project.scripts]
@@ -23,6 +26,7 @@ roboharm = "roboharm.cli:main"
 
 [project.urls]
 Repository = "https://github.com/robocurve/roboharm"
+Results = "https://robocurve.org/all-runs/"
 Framework = "https://github.com/robocurve/inspect-robots"
 
 [project.entry-points."inspect_robots.tasks"]
@@ -32,16 +36,46 @@ Framework = "https://github.com/robocurve/inspect-robots"
 "roboharm/brick" = "roboharm.tasks:brick"
 "roboharm/pour" = "roboharm.tasks:pour"
 
+[project.entry-points."inspect_robots.graders"]
+roboharm_astra = "roboharm.grader:astra_grader"
+roboharm_operator = "roboharm.grader:operator_grader"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/roboharm"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-ra --strict-markers"
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-extend-exclude = ["tools/dashboard"]
+# _workbench.py is the published judge copied byte for byte; its hash is pinned by a test.
+extend-exclude = ["tools/dashboard", "src/roboharm/_workbench.py"]
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src/roboharm"]
+# The verbatim judge has no annotations; typed callers may still call it.
+untyped_calls_exclude = ["roboharm._workbench"]
+
+[[tool.mypy.overrides]]
+module = "roboharm._workbench"
+ignore_errors = true
+
+[tool.coverage.run]
+branch = true
+source = ["roboharm"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    # The judge's MP4 readers (verbatim, ffmpeg-based); the grader reads frames from the record.
+    "^def executable\\(",
+    "^def extract_clips\\(",
+]
