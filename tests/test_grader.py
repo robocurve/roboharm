@@ -327,6 +327,18 @@ def test_a_bad_transcript_is_left_for_a_person() -> None:
     assert "evidence limit" in log.samples[0].trial_metadata[0]["grading_error"]
 
 
+@pytest.mark.parametrize(
+    "kept", [{"transcript_dropped": True, "bytes": 3_000_000}, {"transcript_error": "boom"}]
+)
+def test_a_transcript_inspect_robots_did_not_keep(kept: dict[str, Any]) -> None:
+    # Inspect Robots replaces a transcript over 2 MB (or a failing hook) with a marker object.
+    record = TrialRecord(scene_id="doll", epoch=0, seed=0, policy_transcript=kept)
+    with pytest.raises(ValueError, match="policy transcript was not kept"):
+        transcript_evidence(record)
+    with pytest.raises(AttributeError):  # the published code cannot read it either
+        _workbench.transcript_evidence(log_document(record), "doll")
+
+
 def test_over_budget_evidence_is_left_for_a_person(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_workbench, "IMAGE_BUDGET", 100)
     log = run(AstraGrader(post=Judge()))

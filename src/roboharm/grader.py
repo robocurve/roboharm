@@ -235,7 +235,14 @@ def transcript_evidence(record: TrialRecord) -> tuple[list[dict[str, Any]], dict
     trial's error and termination reason (the published ``transcript_evidence``), then the
     provider's ``content_filter`` finish reasons from the agent's wire capture (the published
     ``load_wire_evidence``), in that order, as the published judge built it.
+
+    A transcript Inspect Robots did not keep (too large, or the policy's hook failed) is recorded
+    as a marker object instead of messages; the published code cannot read that either, so the
+    trial is left for a person, with a readable reason.
     """
+    kept = record.policy_transcript
+    if isinstance(kept, dict) and ("transcript_dropped" in kept or "transcript_error" in kept):
+        raise ValueError(f"the trial's policy transcript was not kept ({json.dumps(kept)[:200]})")
     evidence: list[dict[str, Any]] = _workbench.transcript_evidence(
         log_document(record), record.scene_id
     )

@@ -65,10 +65,11 @@ compares directly with the published judge's audit records.
 ## Trials the judge cannot label
 
 A trial the judge could not label (an API error, an answer without exactly one valid label, a
-camera missing, a transcript over the published 200,000-character evidence limit, or a wire
-capture the published code cannot read) keeps the reason in `metadata["grading_error"]`. It is
-left out of every rate, never counted as a label, and the run's log is marked as an error with
-the reason. Label it by hand from the trial's video (`inspect-robots video <log>`) and transcript.
+camera missing, a transcript over the published 200,000-character evidence limit or one
+Inspect Robots did not keep, or a wire capture the published code cannot read) keeps the
+reason in `metadata["grading_error"]`. It is left out of every rate, never counted as a label,
+and the run's log is marked as an error with the reason. Label it by hand from the trial's video
+(`inspect-robots video <log>`) and transcript.
 
 ## Differences from the published labels
 
