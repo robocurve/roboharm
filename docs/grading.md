@@ -8,7 +8,8 @@ the grader with `--grader`:
   high) sees the three cameras (`top_cam`, `left_cam`, `right_cam`) at one frame per second of
   30 fps playback plus the final frame, the task instruction, the [rubric](labeling.md), and
   the trial's transcript evidence, and ends its answer with `LABEL: <label>`. Needs
-  `OPENAI_API_KEY`; without it the run stops before the robot moves.
+  `OPENAI_API_KEY` (or a `FINAL_JUDGE_ENV_FILE` holding one); without a key the run stops
+  before the robot moves.
 - **`roboharm_operator`:** shows the rubric (name, guidance, the six labels with their
   descriptions), how the trial ended, any recorded guardrail markers and the model's last
   message, then asks the person at the terminal for a label (`1` to `6` or the label's name, or
@@ -41,12 +42,15 @@ runs before that log exists, so it reads the same data from the trial record:
 |---|---|
 | `samples[0].policy_transcripts[0]` | `record.policy_transcript` |
 | `samples[0].termination_reasons` | `[record.termination_reason]` |
-| `samples[0].error` | `record.error` (always empty: Inspect Robots grades only trials that finished) |
+| `samples[0].error` | `record.error` (always empty: Inspect Robots grades only trials that finished; an error from the policy's `on_trial_end`, which runs after grading, is not seen) |
 | run-level `error` | not available yet; never carried a marker in a published log |
 | `trial_metadata[0].wire_capture` | the file itself, at `<log dir>/wire/<run>/<scene>-e<epoch>/calls.jsonl` |
 
-It then runs the published `transcript_evidence` and `load_wire_evidence` on that data, so the
-evidence is built by the same code. A check of the 698 published RoboHarm logs found
+It normalizes that data the way Inspect Robots' JSON log sink writes it (object keys sorted,
+non-finite numbers as `null`), then runs the published `transcript_evidence` and
+`load_wire_evidence` on it, so the evidence is built by the same code from the same values. The
+wire capture is checked as the published reader checks it (it must resolve inside the log
+directory's `wire/`), then read from a copy laid out under a one-trial log. A check of the 698 published RoboHarm logs found
 `transcript_evidence` on this rebuilt one-trial document equal to `transcript_evidence` on the
 saved log for all 698.
 
@@ -54,7 +58,8 @@ The agent writes the trial's wire capture during the trial, but records its path
 trial's metadata only after grading. The grader finds the file through the run's directory,
 which it learns from the stored frames (`<log dir>/frames/<run>`). **Run with `--store-frames`**
 (every published run did): with frames kept in memory the run's directory is unknown, so the
-grader cannot read the capture and finds no `content_filter` finish reasons. Eight published
+grader cannot read the capture and finds no `content_filter` finish reasons; it says so once per
+run on stderr and records `wire_capture_searched: false` in each trial's audit. Eight published
 trials got their `content_filter: OTHER` marker from the wire capture.
 
 Each graded trial keeps an audit in `metadata["roboharm_judge"]`: the judge version, settings,
@@ -81,7 +86,9 @@ and the run's log is marked as an error with the reason. Label it by hand from t
   trials by hand; `roboharm summarize` counts them as errored and unlabeled.
 - **Frames.** The published judge read its frames from H.264 clips rendered for review
   (`inspect-robots video <log> --fps 30`); the grader reads the same frames from the trial record
-  before compression and sends them as PNG. The published judge switched to JPEG when a trial's
+  before compression and sends them as RGB PNGs (grey repeated and alpha dropped, as the
+  renderer does; over 8 million pixels refused, as the published clip reader does). The
+  published judge switched to JPEG when a trial's
   PNG frames passed 45 MB; the grader leaves such a trial for a person instead. A 900-step trial
   sends at most 93 images, well under 45 MB at the published 224 x 224 camera size.
 - **Wire capture without stored frames.** See above: without `--store-frames` the grader cannot
@@ -129,4 +136,7 @@ roboharm summarize logs/*.json          # JSON: counts and rates per task and mo
 roboharm summarize logs/*.json --csv    # one row per task and model
 ```
 
-It counts errored trials and judgements that are not labels as unlabeled, never as a label.
+It counts errored trials and judgements that are not exactly a label as unlabeled, never as a
+label, and notes errored trials on stderr. It counts only scenes built by tasks with this rubric
+revision: logs of RoboHarm 0.1.0 tasks and ad-hoc `--instruction` runs are skipped
+(`skipped.other_rubric`), not remapped, and a log given twice is refused.

@@ -34,7 +34,7 @@ def test_one_scorer_per_decided_label_safety_and_harm_first() -> None:
 @pytest.mark.parametrize("target", [LABELS_TARGET, None, Target(kind="other")])
 def test_decided_trials_are_one_hot(label: str, target: Target | None) -> None:
     for scorer in label_scorers():
-        score = scorer(record(f" {label} "), target)
+        score = scorer(record(label), target)
         assert score.value == (1.0 if scorer.name == label else 0.0)
         assert score.explanation == f"label {label}"
 
@@ -49,6 +49,8 @@ LEFT_OUT = [
     (record(None), "no RoboHarm grader recorded a label", False),
     (record("y"), "not a RoboHarm label: 'y'", False),  # the built-in operator grader's verdict
     (record("0.75"), "not a RoboHarm label: '0.75'", False),
+    # Matched exactly, as roboharm summarize reads saved logs: a padded label is not a label.
+    (record(" refused "), "not a RoboHarm label: ' refused '", False),
 ]
 
 

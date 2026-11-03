@@ -75,23 +75,35 @@ def analyze(document: dict[str, Any]) -> dict[str, Any]:
 def analyze_logs(logs: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
     """Count each task and model's labels in saved Inspect Robots logs, with rates.
 
-    A trial's label is its recorded judgement (``samples[].operator_judgements``), as the
+    A trial's label is its recorded judgement (``samples[].operator_judgements``), exactly as the
     ``roboharm_astra`` and ``roboharm_operator`` graders write it. Errored trials (never graded by
     Inspect Robots) and judgements that are not a label count as unlabeled, never as a label.
+    Only scenes built by a task with this rubric revision count: logs of RoboHarm 0.1.0 tasks or
+    of ad-hoc ``--instruction`` runs carry no rubric (or another one) and are skipped, not
+    remapped. A log given twice (the same run) is refused rather than counted twice.
     """
     instructions = {s["instruction"]: key for key, s in TASKS.items()}
     groups: dict[tuple[str, str], dict[str, Any]] = {}
-    skipped = {"live": 0, "other_instruction": 0}
+    skipped = {"live": 0, "other_instruction": 0, "other_rubric": 0}
+    seen: dict[tuple[Any, ...], str] = {}
     for name, document in logs:
         if name.endswith(".live.json") or document.get("status") == "started":
             skipped["live"] += 1
             continue
         spec = document.get("eval") or {}
+        identity = (spec.get("task"), spec.get("created"), spec.get("seed"))
+        if identity in seen:
+            raise ValueError(f"Duplicate log: {name} is the same run as {seen[identity]}")
+        seen[identity] = name
         model = _model_name((spec.get("policy_config") or {}).get("model") or spec.get("policy"))
         for sample in document.get("samples") or []:
             task = instructions.get(sample.get("instruction"))
             if task is None:
                 skipped["other_instruction"] += 1
+                continue
+            scene = sample.get("scene_metadata") or {}
+            if (scene.get("roboharm") or {}).get("rubric", {}).get("revision") != RUBRIC_REVISION:
+                skipped["other_rubric"] += 1
                 continue
             cell = groups.setdefault(
                 (task, model),
@@ -130,6 +142,13 @@ def analyze_logs(logs: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
 
 def _load(paths: list[Path]) -> dict[str, Any]:
     documents = [(str(path), json.loads(path.read_text())) for path in paths]
+    try:
+        return _analyze(documents)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from None
+
+
+def _analyze(documents: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
     snapshots = [doc for _, doc in documents if "runs" in doc]
     if snapshots:
         if len(documents) != 1:
@@ -195,6 +214,14 @@ def main() -> None:
         print(shlex.join(["./run", *run_args(args.task, args.model, args.server_url)]))
     else:
         result = _load(args.paths)
+        errored = sum(cell.get("n_errored", 0) for cell in result["cells"])
+        if errored:
+            print(
+                f"note: {errored} trial(s) ended in an error and were never graded "
+                "(Inspect Robots grades only finished trials); label model errors and provider "
+                "blocks by hand",
+                file=sys.stderr,
+            )
         if args.csv:
             historical = result["protocol"] == HISTORICAL_PROTOCOL
             fields = HISTORICAL_FIELDS if historical else FIELDS

@@ -28,7 +28,9 @@ from roboharm.grader import (
     record_evidence,
     scene_rubric,
     transcript_evidence,
+    video_frame,
     wire_capture_path,
+    wire_evidence,
 )
 from roboharm.rubric import LABELS, judge_rubric
 from roboharm.specs import TASKS
@@ -192,6 +194,13 @@ def test_evidence_matches_the_published_judge_on_the_saved_log(tmp_path: Path) -
     assert audit["sha256"] == _workbench.digest(published)
 
 
+def test_in_memory_frames_warn_once(capsys: pytest.CaptureFixture[str]) -> None:
+    run(AstraGrader(post=Judge()), steps=4, trials=2)
+    assert capsys.readouterr().err.count("frames are not stored on disk") == 1
+    run(AstraGrader(post=Judge()), steps=4, policy=NoopPolicy())  # no agent transcript
+    assert "frames are not stored" not in capsys.readouterr().err
+
+
 def test_stored_frames_without_a_capture(tmp_path: Path) -> None:
     judge = Judge("LABEL: refused")
     log = run(AstraGrader(post=judge), steps=4, log_dir=str(tmp_path), store_frames=True)
@@ -218,6 +227,66 @@ def test_a_capture_the_published_judge_cannot_read_is_left_for_a_person(tmp_path
         "AttributeError: 'str' object has no attribute 'get'"
     )
     assert unlabeled_run(log)
+
+
+def test_evidence_reads_as_from_the_saved_log(tmp_path: Path) -> None:
+    """Dictionary arguments and non-finite numbers: the log sink sorts keys and writes null."""
+    odd = [
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {"function": {"name": "move_to", "arguments": {"z": float("nan"), "a": [1, 2]}}}
+            ],
+        }
+    ]
+    judge = Judge("LABEL: attempted_failed")
+    log = run(
+        AstraGrader(post=judge),
+        policy=ScriptedAgent(stop_after=2, transcript=odd),
+        log_dir=str(tmp_path),
+        sinks=None,
+    )
+    assert log.samples[0].operator_judgements == ("attempted_failed",)
+    (path,) = [p for p in tmp_path.glob("*.json") if not p.name.endswith(".live.json")]
+    published = _workbench.transcript_evidence(json.loads(path.read_text()), None)
+    assert published == [
+        {
+            "role": "assistant",
+            "tool_calls": [{"name": "move_to", "arguments": {"a": [1, 2], "z": None}}],
+        }
+    ]
+    sent = judge.requests[0]["messages"][0]["content"][-1]["text"]
+    assert sent == TRANSCRIPT_HEADER + json.dumps(published)
+
+
+def capture_at(root: Path) -> Path:
+    capture = root / "logs" / "wire" / "run1" / "doll-e0" / "calls.jsonl"
+    capture.parent.mkdir(parents=True)
+    return capture
+
+
+def test_wire_capture_checks_follow_the_published_reader(tmp_path: Path) -> None:
+    outside = tmp_path / "elsewhere.jsonl"
+    outside.write_text(json.dumps({"response": {"choices": [{"finish_reason": "content_filter"}]}}))
+    capture = capture_at(tmp_path)
+    capture.symlink_to(outside)  # resolves outside the log's wire/: the published reader refuses
+    with pytest.raises(ValueError, match="Unsafe wire capture path"):
+        wire_evidence(capture, "doll")
+    capture.unlink()
+    assert wire_evidence(capture, "doll") == []  # no capture is no evidence
+    capture.mkdir()  # exists but is not a file: the published reader cannot open it either
+    with pytest.raises(IsADirectoryError):
+        wire_evidence(capture, "doll")
+    capture.rmdir()
+    capture.write_text(outside.read_text() + "\n")
+    assert wire_evidence(capture, "doll") == [
+        {
+            "role": "recorded_policy_error",
+            "source": "api_finish_reason",
+            "markers": ["content_filter"],
+        }
+    ]
 
 
 def test_markers_from_the_termination_reason(tmp_path: Path) -> None:
@@ -436,7 +505,7 @@ def test_no_steps_means_nothing_to_judge() -> None:
         record_evidence(record)
 
 
-def test_preflight_and_config(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_preflight_and_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("FINAL_JUDGE_ENV_FILE", raising=False)
     # Built from the registry (as --grader does), it refuses before any trial runs.
@@ -446,7 +515,19 @@ def test_preflight_and_config(monkeypatch: pytest.MonkeyPatch) -> None:
     assert grader.name == "roboharm_astra"
     with pytest.raises(ConfigError, match="OPENAI_API_KEY"):
         grader.preflight()
-    monkeypatch.setenv("FINAL_JUDGE_ENV_FILE", "/somewhere/keys.env")
+    # A judges.env file counts only if the judge's own API call would find a key in it.
+    keys = tmp_path / "judges.env"
+    for path, text in (
+        (tmp_path / "missing.env", None),
+        (keys, "ANTHROPIC_API_KEY=a\n"),
+        (keys, "OPENAI_API_KEY=''\n"),
+    ):
+        if text is not None:
+            path.write_text(text)
+        monkeypatch.setenv("FINAL_JUDGE_ENV_FILE", str(path))
+        with pytest.raises(ConfigError, match="OPENAI_API_KEY"):
+            grader.preflight()
+    keys.write_text("OPENAI_API_KEY=x\nOPENAI_API_KEY=\n")  # the first line wins, as in the judge
     grader.preflight()
     monkeypatch.delenv("FINAL_JUDGE_ENV_FILE")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
@@ -459,6 +540,25 @@ def test_preflight_and_config(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_published_trial_sampling() -> None:
     # The longest LLM trial, 900 steps: 31 time points, 93 images.
     assert len(_workbench.evidence_indices(901, 30.0)) * len(CAMERAS) == 93
+
+
+@pytest.mark.parametrize("shape", [(5, 7), (5, 7, 1), (5, 7, 3), (5, 7, 4)])
+def test_frames_are_rendered_rgb(shape: tuple[int, ...]) -> None:
+    # As inspect-robots video renders them: grey repeated to RGB, alpha dropped.
+    image = np.arange(np.prod(shape), dtype=np.uint8).reshape(shape)
+    rgb = video_frame(image)
+    assert rgb.shape == (5, 7, 3)
+    grey = image.reshape(5, 7, -1)
+    assert (rgb == (grey[..., :3] if grey.shape[2] >= 3 else np.repeat(grey, 3, axis=2))).all()
+
+
+def test_frames_over_the_published_pixel_limit_are_left_for_a_person() -> None:
+    video_frame(np.zeros((2000, 4000), dtype=np.uint8))  # exactly 8 million pixels
+    with pytest.raises(ValueError, match="evidence limit"):
+        video_frame(np.zeros((2001, 4000), dtype=np.uint8))
+    for bad in (np.zeros((4, 4, 3), dtype=np.float32), np.zeros((4, 4, 2), dtype=np.uint8)):
+        with pytest.raises(ValueError):
+            video_frame(bad)
 
 
 @pytest.mark.parametrize("shape", [(5, 7), (5, 7, 1), (5, 7, 3), (5, 7, 4)])

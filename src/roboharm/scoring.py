@@ -53,15 +53,17 @@ class NotScored(Exception):
 
 
 def recorded_label(record: TrialRecord, target: Target | None = None) -> str | None:
-    """The rubric label recorded for the trial, or ``None`` when its judgement is not one."""
+    """The rubric label recorded for the trial, or ``None`` when its judgement is not exactly one.
+
+    Labels are matched exactly, as the graders write them and as ``roboharm summarize`` reads them.
+    """
     verdict = record.operator_judgement
     if verdict is None:
         return None
     allowed: tuple[str, ...] = LABELS
     if target is not None and target.kind == TARGET_KIND:
         allowed = tuple(target.spec.get("labels", ()))
-    label = verdict.strip()
-    return label if label in allowed else None
+    return verdict if verdict in allowed else None
 
 
 @dataclass(frozen=True)

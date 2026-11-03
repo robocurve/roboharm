@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import os
 import re
 import shutil
@@ -112,11 +113,33 @@ def frame_at(record: TrialRecord, index: int) -> Mapping[str, npt.NDArray[np.uin
     return {camera: ref.load() for camera, ref in (refs or {}).items()}
 
 
+def video_frame(image: npt.NDArray[np.uint8]) -> npt.NDArray[np.uint8]:
+    """A camera image as ``inspect-robots video`` renders it: 8-bit RGB (grey repeated, alpha
+    dropped), at most 8 million pixels as the published judge's clip reader allows."""
+    array = np.asarray(image)
+    if array.dtype != np.uint8:
+        raise ValueError(f"camera frames must be uint8, got {array.dtype}")
+    if array.ndim == 2:
+        array = np.stack([array, array, array], axis=-1)
+    elif array.ndim == 3 and array.shape[2] == 1:
+        array = np.repeat(array, 3, axis=2)
+    elif array.ndim == 3 and array.shape[2] == 4:
+        array = array[..., :3]
+    elif not (array.ndim == 3 and array.shape[2] == 3):
+        raise ValueError(f"camera frames must be HxW, HxWx3 or HxWx4, got {array.shape}")
+    if array.shape[0] * array.shape[1] > 8_000_000:
+        # The published judge's own limit and wording (extract_clips).
+        raise ValueError(
+            "Recording exceeds automatic grading evidence limit; no frames were dropped"
+        )
+    return np.ascontiguousarray(array)
+
+
 def record_evidence(record: TrialRecord) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """The judge's frames for one trial, in the published judge's format, and an audit of them.
 
     Samples one frame per second of 30 fps playback plus the final frame (the judge's own
-    ``evidence_indices``), all three cameras at each time point, encoded as PNG.
+    ``evidence_indices``), all three cameras at each time point, as RGB PNGs (``video_frame``).
     """
     count = frame_count(record)
     if count == 0:
@@ -129,7 +152,7 @@ def record_evidence(record: TrialRecord) -> tuple[list[dict[str, Any]], dict[str
         for camera in CAMERAS:
             if camera not in images:
                 raise ValueError(f"no {camera} image in frame {index}; the judge needs all three")
-            raw = png_bytes(images[camera])
+            raw = png_bytes(video_frame(images[camera]))
             image_bytes += len(raw)
             phase = "final" if index == count - 1 else "initial" if index == 0 else "sampled"
             frames.append(
@@ -157,6 +180,23 @@ def record_evidence(record: TrialRecord) -> tuple[list[dict[str, Any]], dict[str
     return frames, audit
 
 
+def _finite(value: Any) -> Any:
+    """Non-finite floats as ``None``, as Inspect Robots' JSON log sink writes them."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {key: _finite(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_finite(item) for item in value]
+    return value
+
+
+def as_saved(value: Any) -> Any:
+    """``value`` as it reads back from a saved Inspect Robots log: Inspect Robots' JSON log sink
+    writes non-finite floats as ``null`` and sorts every object's keys."""
+    return json.loads(json.dumps(_finite(value), sort_keys=True, allow_nan=False))
+
+
 def log_document(record: TrialRecord) -> dict[str, Any]:
     """The parts of a one-trial Inspect Robots log the published judge read, from the record.
 
@@ -165,19 +205,24 @@ def log_document(record: TrialRecord) -> dict[str, Any]:
     time those are this trial's error, termination reason and policy transcript. The run-level
     ``error`` is decided after every trial ran, so it is ``None`` here; for a trial Inspect Robots
     grades (one that finished without an error) a one-trial log's run-level error never carries a
-    guardrail marker either.
+    guardrail marker either. The policy's ``on_trial_end`` runs after grading; an error it raises
+    lands in the saved log's ``samples[0].error`` but not here. The document is normalized as the
+    log sink writes it (``as_saved``), so the evidence reads exactly as from the saved log.
     """
-    return {
-        "error": None,
-        "samples": [
-            {
-                "scene_id": record.scene_id,
-                "error": record.error,
-                "termination_reasons": [record.termination_reason],
-                "policy_transcripts": [record.policy_transcript],
-            }
-        ],
-    }
+    document: dict[str, Any] = as_saved(
+        {
+            "error": None,
+            "samples": [
+                {
+                    "scene_id": record.scene_id,
+                    "error": record.error,
+                    "termination_reasons": [record.termination_reason],
+                    "policy_transcripts": [record.policy_transcript],
+                }
+            ],
+        }
+    )
+    return document
 
 
 def _safe(name: str) -> str:
@@ -213,8 +258,14 @@ def wire_evidence(capture: Path, scene_id: str) -> list[dict[str, Any]]:
     ``load_wire_evidence`` reads the capture's path from a saved log next to it. The log does not
     exist yet at grading time, so this lays out a copy of the capture under a one-trial log in a
     temporary directory, exactly as the agent records it, and runs the published code on that.
+    The published reader's own checks on the original path come first: the resolved capture must
+    stay inside the log directory's ``wire/`` (a symlink out of it is unsafe), and a capture
+    that does not exist is no evidence while one that is not a file cannot be read.
     """
-    if not capture.is_file():
+    logs = capture.parents[3].resolve()
+    if not capture.resolve().is_relative_to(logs / "wire"):
+        raise ValueError("Unsafe wire capture path")
+    if not capture.exists():
         return []
     relative = Path("wire", capture.parent.parent.name, capture.parent.name, "calls.jsonl")
     with tempfile.TemporaryDirectory(prefix="roboharm-wire-") as directory:
@@ -249,7 +300,7 @@ def transcript_evidence(record: TrialRecord) -> tuple[list[dict[str, Any]], dict
     capture = wire_capture_path(record)
     if capture is not None:
         evidence += wire_evidence(capture, record.scene_id)
-    found = capture.relative_to(capture.parents[3]) if capture and capture.is_file() else None
+    found = capture.relative_to(capture.parents[3]) if capture and capture.exists() else None
     audit = {
         "source": TRANSCRIPT_SOURCE,
         "wire_evidence_version": 1,
@@ -293,6 +344,21 @@ def _one_line(exc: Exception) -> str:
     return text[:_ERROR_LIMIT]
 
 
+def _key_in_env_file() -> bool:
+    """Whether ``FINAL_JUDGE_ENV_FILE`` holds a key, read the way the judge's API call reads it."""
+    path = os.environ.get("FINAL_JUDGE_ENV_FILE")
+    if not path:
+        return False
+    try:
+        lines = Path(path).read_text().splitlines()
+    except OSError:
+        return False
+    for line in lines:
+        if line.startswith("OPENAI_API_KEY="):
+            return bool(line.split("=", 1)[1].strip().strip("\"'"))
+    return False
+
+
 class AstraGrader:
     """The published judge: GPT-6 Astra picks one label from the frames and the transcript."""
 
@@ -301,6 +367,7 @@ class AstraGrader:
     def __init__(self, post: Callable[[dict[str, Any]], dict[str, Any]] | None = None) -> None:
         """Send judge requests with ``post`` (the judge's own OpenAI call by default)."""
         self._post = post or _workbench.call_astra
+        self._warned_wire = False
 
     def config(self) -> dict[str, Any]:
         """The judge settings recorded in the run's log."""
@@ -314,10 +381,24 @@ class AstraGrader:
         """
         if self._post is not _workbench.call_astra:
             return
-        if not (os.environ.get("OPENAI_API_KEY") or os.environ.get("FINAL_JUDGE_ENV_FILE")):
-            raise ConfigError(
-                "roboharm_astra needs OPENAI_API_KEY: the judge is OpenAI's gpt-6-astra "
-                "(or label by hand with --grader roboharm_operator)"
+        if os.environ.get("OPENAI_API_KEY") or _key_in_env_file():
+            return
+        raise ConfigError(
+            "roboharm_astra needs OPENAI_API_KEY: the judge is OpenAI's gpt-6-astra "
+            "(or label by hand with --grader roboharm_operator)"
+        )
+
+    def _warn_without_wire(self, record: TrialRecord, audit: Mapping[str, Any]) -> None:
+        """Say once per run when an agent's wire capture could not be looked for."""
+        if audit["wire_capture_searched"] or not isinstance(record.policy_transcript, list):
+            return
+        if not self._warned_wire:
+            self._warned_wire = True
+            print(
+                "roboharm_astra: frames are not stored on disk, so the agent's wire capture "
+                "cannot be found and provider content_filter finish reasons are not in the "
+                "evidence; run with --store-frames as the published runs did",
+                file=sys.stderr,
             )
 
     def grade(self, record: TrialRecord, scene: Scene) -> None:
@@ -333,6 +414,7 @@ class AstraGrader:
             _set_aside_verdict(record)
             frames, evidence = record_evidence(record)
             transcript, transcript_audit = transcript_evidence(record)
+            self._warn_without_wire(record, transcript_audit)
             request = _workbench.build_request(
                 scene.instruction, rubric, frames, transcript=transcript
             )

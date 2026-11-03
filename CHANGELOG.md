@@ -25,7 +25,8 @@ keys, entry points and instructions are unchanged.
   `episode_length`. An `invalid` or unlabeled trial is left out of every rate, never counted as
   a label: Inspect Robots after 0.60 records an abstention, 0.59 and 0.60 mark the run's log as
   an error with the reason. `roboharm summarize` now also reads Inspect Robots logs and prints
-  counts of all six labels with the rates.
+  counts of all six labels with the rates (only scenes built with this rubric revision; a log
+  given twice is refused; errored trials are counted and noted).
 - **Labels.** `roboharm.labels.summarize` uses the six labels; `guardrail_blocked` is a decided
   trial. The historical five-class analysis stays as `summarize_historical` and is what a
   dashboard snapshot gets; its labels are not remapped.
