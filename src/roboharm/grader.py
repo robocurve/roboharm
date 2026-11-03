@@ -226,20 +226,34 @@ def log_document(record: TrialRecord) -> dict[str, Any]:
 
 
 def _safe(name: str) -> str:
-    """The agent's file-safe trial id component (inspect-robots-agent ``_capture._safe``)."""
+    """The agent's file-safe name rule (inspect-robots-agent ``_capture._safe``)."""
     safe = _SAFE_RE.sub("-", name)
     if safe != name:
         safe = f"{safe}-{zlib.crc32(name.encode()) & 0xFFFFFFFF:08x}"
     return safe
 
 
+def _trial_dirs(scene_id: str, epoch: int) -> list[str]:
+    """The trial directory names the agent may use, the pinned agent's first.
+
+    inspect-robots-agent 0.26.0 (the ``hardware`` extra) makes ``"<scene>-e<epoch>"`` file-safe as
+    a whole; later versions make the scene id safe first and then add ``-e<epoch>``. The two agree
+    unless the scene id has characters outside ``[A-Za-z0-9._-]``.
+    """
+    pinned = _safe(f"{scene_id}-e{epoch}")
+    newer = f"{_safe(scene_id)}-e{epoch}"
+    return [pinned] if newer == pinned else [pinned, newer]
+
+
 def wire_capture_path(record: TrialRecord) -> Path | None:
     """Where the LLM agent writes this trial's wire capture, or ``None`` when that is unknown.
 
     The agent records the capture's path in the trial's metadata only after grading, but it writes
-    the file during the trial, to ``<log dir>/wire/<run>/<scene>-e<epoch>/calls.jsonl``. The run's
-    stored frames (``--store-frames``) live in ``<log dir>/frames/<run>``, so their paths name
-    the run's directory. With frames kept in memory the run's directory is unknown.
+    the file during the trial, to ``<log dir>/wire/<run>/<trial>/calls.jsonl``, where ``<trial>``
+    is the file-safe ``<scene>-e<epoch>`` (see ``_trial_dirs``; the one that exists wins, else the
+    pinned agent's). The run's stored frames (``--store-frames``) live in
+    ``<log dir>/frames/<run>``, so their paths name the run's directory. With frames kept in
+    memory the run's directory is unknown.
     """
     for step in record.steps:
         for refs in (step.image_refs, step.result_image_refs):
@@ -247,8 +261,11 @@ def wire_capture_path(record: TrialRecord) -> Path | None:
                 run = Path(ref.path).parent
                 if run.parent.name != "frames":
                     return None
-                trial = f"{_safe(record.scene_id)}-e{record.epoch}"
-                return run.parent.parent / "wire" / run.name / trial / "calls.jsonl"
+                wire = run.parent.parent / "wire" / run.name
+                paths = [
+                    wire / d / "calls.jsonl" for d in _trial_dirs(record.scene_id, record.epoch)
+                ]
+                return next((p for p in paths if p.exists()), paths[0])
     return None
 
 

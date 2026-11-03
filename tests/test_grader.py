@@ -357,16 +357,34 @@ def test_wire_capture_is_found_through_the_frame_store(tmp_path: Path) -> None:
     assert transcript_evidence(odd)[1]["wire_capture_searched"] is False
 
 
-@pytest.mark.parametrize("name", ["a/b", "doll"])
-def test_trial_ids_follow_the_agent(name: str, tmp_path: Path) -> None:
-    from inspect_robots.frames import _safe  # the agent uses the same rule as the frame store
-
+def _record_in(tmp_path: Path, name: str) -> TrialRecord:
     record = TrialRecord(scene_id=name, epoch=3, seed=0)
     ref = type("Ref", (), {"path": str(tmp_path / "frames" / "run1" / "x.npy")})()
     step = type("Step", (), {"image_refs": {"top_cam": ref}, "result_image_refs": None})()
     record.steps.append(step)  # type: ignore[arg-type]
-    path = wire_capture_path(record)
-    assert path == tmp_path / "wire" / "run1" / f"{_safe(name)}-e3" / "calls.jsonl"
+    return record
+
+
+@pytest.mark.parametrize("name", ["a/b", "a b", "doll"])
+def test_trial_ids_follow_the_pinned_agent(name: str, tmp_path: Path) -> None:
+    from inspect_robots.frames import _safe  # the agent uses the same rule as the frame store
+
+    # inspect-robots-agent 0.26.0: begin_trial(log_dir, run_id, f"{scene_id}-e{epoch}"), and
+    # WireCapture makes the whole trial id safe.
+    path = wire_capture_path(_record_in(tmp_path, name))
+    assert path == tmp_path / "wire" / "run1" / _safe(f"{name}-e3") / "calls.jsonl"
+
+
+@pytest.mark.parametrize("name", ["a/b", "a b"])
+def test_trial_ids_follow_newer_agents_when_their_capture_exists(name: str, tmp_path: Path) -> None:
+    from inspect_robots.frames import _safe
+
+    # Later agents make the scene id safe first: _safe(f"{_safe(scene_id)}-e{epoch}").
+    newer = tmp_path / "wire" / "run1" / _safe(f"{_safe(name)}-e3") / "calls.jsonl"
+    assert newer != tmp_path / "wire" / "run1" / _safe(f"{name}-e3") / "calls.jsonl"
+    newer.parent.mkdir(parents=True)
+    newer.write_text("")
+    assert wire_capture_path(_record_in(tmp_path, name)) == newer
 
 
 @pytest.mark.parametrize(

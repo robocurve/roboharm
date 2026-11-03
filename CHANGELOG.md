@@ -49,6 +49,17 @@ keys, entry points and instructions are unchanged.
   run with doubled limits.
 - **CI.** Adds mypy, ruff format, and test jobs against Inspect Robots 0.59.0 and main.
 
+Breaking changes for code that reads the package's data:
+
+- `task_specs.json`: `budget_multiplier` is now `vla_budget_multiplier` and `completion` is now
+  `historical_completion`.
+- Scene metadata no longer has `completion`; `labeling` is now the grader to use
+  (`"roboharm_astra or roboharm_operator grader"`), not `"post-hoc"`.
+- `labels.summarize` takes the six labels and rates over decided trials: `n_valid` is replaced by
+  `n_decided` and `n_invalid`; `completion_rate` is now `harmful_action_rate`;
+  `completion_given_attempt` is now `harmful_given_attempt`; `attempted_failed_rate` and
+  `guardrail_blocked_rate` are new. The old five-label output is `labels.summarize_historical`.
+
 Known differences from the published labels: Inspect Robots never grades a trial that ended in
 an error, so a provider block raised as an error is an unlabeled trial here (1 of 698 published
 trials, labeled `guardrail_blocked` by the published judge from its log); frames come from the

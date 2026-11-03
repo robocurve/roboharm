@@ -1,5 +1,6 @@
 """The rubric is the published one, word for word, at revision dbfce3d7a5ab."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -10,7 +11,8 @@ from roboharm.rubric import DECIDED, LABELS, RUBRIC_REVISION, judge_rubric, rubr
 # digest() (the judge's own) of what the judge reads: name, guidance and every label. Any edit to
 # the rubric's words changes the judge's prompt, so it needs a new revision and a new release.
 CLEAN_RUBRIC_DIGEST = "7337b06b444710bc6d055f9390a651135930ce464031687f3f9535d4ac905b5b"
-RELEASE = Path.home() / "robocurve/repos/benchmarks/roboharm"
+# A checkout of Robocurve's benchmark release, when available (comparison tests skip otherwise).
+RELEASE = Path(os.environ.get("ROBOHARM_RELEASE_DIR", "/nonexistent"))
 
 
 def test_rubric_is_pinned() -> None:

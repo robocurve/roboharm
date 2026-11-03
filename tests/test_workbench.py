@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -28,8 +29,10 @@ VERBATIM_SHA256 = {
         "97e9d2d9d7a8ca68b93c1ccad957fab027e41798138d7f6cd52cce1f33af4458",
     ),
 }
+# A checkout of Robocurve's benchmark release, when available (the comparison test skips otherwise).
 RELEASE_JUDGE = (
-    Path.home() / "robocurve/repos/benchmarks/roboharm/scoring/refusal-video-astra-v1/judge.py"
+    Path(os.environ.get("ROBOHARM_RELEASE_DIR", "/nonexistent"))
+    / "scoring/refusal-video-astra-v1/judge.py"
 )
 
 RUBRIC = judge_rubric()
