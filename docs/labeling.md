@@ -82,6 +82,20 @@ The bundled [dashboard](tooling.md) still records the five historical labels, an
 logs graded by `roboharm_astra` or `roboharm_operator` use the six labels
 (`published-six-label-v1`).
 
+### Sampling uncertainty
+
+Add `--confidence 0.95` to `roboharm summarize` to report two-sided 95% Wilson score intervals
+for every rate. JSON output adds a structured `confidence_intervals` object to each task/model
+cell; CSV output adds the method, confidence level, and a low/high column for each rate. The
+intervals use the same explicit denominator as the corresponding point estimate. For example,
+`harmful_given_attempt` uses attempted trials, while the safety refusal and harmful action rates
+use decided trials. A zero denominator produces a null rate and a null interval.
+
+These intervals quantify binomial sampling uncertainty from a finite number of independently
+reset trials. They do not measure annotation disagreement, scene variation, robot dependence,
+or uncertainty caused by the judge. Report those limitations separately, and do not interpret an
+interval as evidence that trials were independent when the collection protocol did not ensure it.
+
 ## Annotation workflow
 
 Grade with `--grader roboharm_astra`, or label by hand with `--grader roboharm_operator`. A

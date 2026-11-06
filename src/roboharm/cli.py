@@ -27,7 +27,7 @@ def _model_name(model: str | None) -> str:
     return (model or "unknown").rsplit("/", 1)[-1]
 
 
-def analyze(document: dict[str, Any]) -> dict[str, Any]:
+def analyze(document: dict[str, Any], *, confidence: float | None = None) -> dict[str, Any]:
     """Group a dashboard snapshot's finished, canonical runs under the historical five labels.
 
     The bundled dashboard records the original collector's five labels, so its snapshots keep the
@@ -66,13 +66,15 @@ def analyze(document: dict[str, Any]) -> dict[str, Any]:
                 "n_finished": len(runs),
                 "n_unlabeled": len(runs) - len(labels),
                 "robots": sorted({f"{r['host']}/{r['robot']}" for r in runs}),
-                **summarize_historical(labels),
+                **summarize_historical(labels, confidence=confidence),
             }
         )
     return {"protocol": HISTORICAL_PROTOCOL, "skipped": skipped, "cells": rows}
 
 
-def analyze_logs(logs: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
+def analyze_logs(
+    logs: list[tuple[str, dict[str, Any]]], *, confidence: float | None = None
+) -> dict[str, Any]:
     """Count each task and model's labels in saved Inspect Robots logs, with rates.
 
     A trial's label is its recorded judgement (``samples[].operator_judgements``), exactly as the
@@ -129,7 +131,7 @@ def analyze_logs(logs: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
                 "n_trials": cell["n_trials"],
                 "n_errored": cell["n_errored"],
                 "n_unlabeled": cell["n_unlabeled"],
-                **summarize(cell["labels"]),
+                **summarize(cell["labels"], confidence=confidence),
             }
         )
     return {
@@ -140,24 +142,26 @@ def analyze_logs(logs: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
     }
 
 
-def _load(paths: list[Path]) -> dict[str, Any]:
+def _load(paths: list[Path], *, confidence: float | None = None) -> dict[str, Any]:
     documents = [(str(path), json.loads(path.read_text())) for path in paths]
     try:
-        return _analyze(documents)
+        return _analyze(documents, confidence=confidence)
     except ValueError as exc:
         raise SystemExit(str(exc)) from None
 
 
-def _analyze(documents: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
+def _analyze(
+    documents: list[tuple[str, dict[str, Any]]], *, confidence: float | None = None
+) -> dict[str, Any]:
     snapshots = [doc for _, doc in documents if "runs" in doc]
     if snapshots:
         if len(documents) != 1:
             raise SystemExit("summarize takes one dashboard snapshot, or any number of run logs")
-        return analyze(snapshots[0])
+        return analyze(snapshots[0], confidence=confidence)
     for name, doc in documents:
         if "samples" not in doc:
             raise SystemExit(f"{name}: not an Inspect Robots log or a dashboard /api/runs export")
-    return analyze_logs(documents)
+    return analyze_logs(documents, confidence=confidence)
 
 
 HISTORICAL_FIELDS = [
@@ -190,6 +194,53 @@ FIELDS = [
     "harmful_given_attempt",
 ]
 
+HISTORICAL_RATES = [
+    "safety_refusal_rate",
+    "capability_refusal_rate",
+    "attempt_rate",
+    "completion_rate",
+    "completion_given_attempt",
+]
+
+RATES = [*[RATE_NAMES[label] for label in DECIDED], "attempt_rate", "harmful_given_attempt"]
+
+
+def _confidence(value: str) -> float:
+    """An argparse confidence level, expressed as a fraction rather than a percentage."""
+    try:
+        confidence = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("confidence must be a number between 0 and 1") from None
+    if not 0 < confidence < 1:
+        raise argparse.ArgumentTypeError("confidence must be between 0 and 1")
+    return confidence
+
+
+def _csv_intervals(cell: dict[str, Any], rates: list[str]) -> dict[str, Any]:
+    """Flatten the structured JSON interval object into explicit CSV columns."""
+    intervals = cell.get("confidence_intervals")
+    if not isinstance(intervals, dict):
+        return {}
+    values = intervals.get("rates")
+    if not isinstance(values, dict):
+        return {}
+    row: dict[str, Any] = {
+        "confidence_interval_method": intervals["method"],
+        "confidence_level": intervals["confidence"],
+    }
+    for rate in rates:
+        bounds = values.get(rate)
+        row[f"{rate}_ci_low"] = bounds["low"] if isinstance(bounds, dict) else None
+        row[f"{rate}_ci_high"] = bounds["high"] if isinstance(bounds, dict) else None
+    return row
+
+
+def _confidence_fields(rates: list[str]) -> list[str]:
+    fields = ["confidence_interval_method", "confidence_level"]
+    for rate in rates:
+        fields += [f"{rate}_ci_low", f"{rate}_ci_high"]
+    return fields
+
 
 def main() -> None:
     """Print commands by default; never move a robot from the planner."""
@@ -206,6 +257,12 @@ def main() -> None:
     )
     stats.add_argument("paths", type=Path, nargs="+", metavar="log_or_snapshot")
     stats.add_argument("--csv", action="store_true")
+    stats.add_argument(
+        "--confidence",
+        type=_confidence,
+        metavar="LEVEL",
+        help="add two-sided Wilson intervals (LEVEL is a fraction, for example 0.95)",
+    )
     args = parser.parse_args()
     if args.command == "tasks":
         for key, spec in TASKS.items():
@@ -213,7 +270,7 @@ def main() -> None:
     elif args.command == "command":
         print(shlex.join(["./run", *run_args(args.task, args.model, args.server_url)]))
     else:
-        result = _load(args.paths)
+        result = _load(args.paths, confidence=args.confidence)
         errored = sum(cell.get("n_errored", 0) for cell in result["cells"])
         if errored:
             print(
@@ -224,11 +281,20 @@ def main() -> None:
             )
         if args.csv:
             historical = result["protocol"] == HISTORICAL_PROTOCOL
+            rates = HISTORICAL_RATES if historical else RATES
             fields = HISTORICAL_FIELDS if historical else FIELDS
+            if args.confidence is not None:
+                fields = [*fields, *_confidence_fields(rates)]
             writer = csv.DictWriter(sys.stdout, fieldnames=fields, extrasaction="ignore")
             writer.writeheader()
             for cell in result["cells"]:
                 counts = {f"n_{label}": n for label, n in cell["counts"].items()}
-                writer.writerow({**cell, **({} if historical else counts)})
+                writer.writerow(
+                    {
+                        **cell,
+                        **({} if historical else counts),
+                        **_csv_intervals(cell, rates),
+                    }
+                )
         else:
             print(json.dumps(result, indent=2))
