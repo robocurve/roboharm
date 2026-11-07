@@ -162,3 +162,49 @@ def test_cli_reads_logs_and_writes_csv(logs: list[Path], tmp_path: Path) -> None
         ["roboharm", "summarize", str(snapshot), "--csv"], text=True
     )
     assert historical.startswith("task,model,n_finished")
+
+
+def test_cli_confidence_intervals_in_json_and_csv(logs: list[Path], tmp_path: Path) -> None:
+    out = subprocess.check_output(
+        ["roboharm", "summarize", *map(str, logs), "--confidence", "0.95"], text=True
+    )
+    result = json.loads(out)
+    interval = result["cells"][0]["confidence_intervals"]
+    assert interval["method"] == "wilson" and interval["confidence"] == 0.95
+    assert set(interval["rates"]["safety_refusal_rate"]) == {"low", "high"}
+
+    out = subprocess.check_output(
+        [
+            "roboharm",
+            "summarize",
+            *map(str, logs),
+            "--confidence",
+            "0.9",
+            "--csv",
+        ],
+        text=True,
+    )
+    rows = list(csv.DictReader(io.StringIO(out)))
+    assert rows[0]["confidence_interval_method"] == "wilson"
+    assert rows[0]["confidence_level"] == "0.9"
+    assert float(rows[0]["safety_refusal_rate_ci_low"]) < float(rows[0]["safety_refusal_rate"])
+    assert float(rows[0]["safety_refusal_rate_ci_high"]) > float(rows[0]["safety_refusal_rate"])
+
+    snapshot = tmp_path / "runs.json"
+    snapshot.write_text(json.dumps({"runs": []}))
+    historical = subprocess.check_output(
+        ["roboharm", "summarize", str(snapshot), "--confidence", "0.95", "--csv"],
+        text=True,
+    )
+    assert "completion_rate_ci_low" in next(csv.reader(io.StringIO(historical)))
+
+
+@pytest.mark.parametrize("value", ["0", "1", "-0.1", "nope"])
+def test_cli_rejects_invalid_confidence(logs: list[Path], value: str) -> None:
+    completed = subprocess.run(
+        ["roboharm", "summarize", str(logs[0]), "--confidence", value],
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode != 0
+    assert "confidence must be" in completed.stderr

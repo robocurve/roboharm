@@ -20,6 +20,7 @@ its own Inspect Robots log:
 ```bash
 uv run roboharm summarize logs/*.json > cells.json      # counts and rates per task and model
 uv run roboharm summarize logs/*.json --csv > cells.csv
+uv run roboharm summarize logs/*.json --confidence 0.95 > cells-with-intervals.json
 ```
 
 See [grading](grading.md#from-labels-to-results).
@@ -35,6 +36,7 @@ curl --fail http://127.0.0.1:8301/api/labels.csv > labels.csv
 curl --fail http://127.0.0.1:8301/api/labels > label-summary.json
 uv run roboharm summarize runs.json > cells.json
 uv run roboharm summarize runs.json --csv > cells.csv
+uv run roboharm summarize runs.json --confidence 0.95 > cells-with-intervals.json
 ```
 
 `/api/runs` joins record summaries, labels, video readiness, and transcript URLs.
