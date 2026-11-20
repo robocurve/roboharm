@@ -118,6 +118,10 @@ labeled `invalid` is left out of every rate, never counted as a label. Inspect R
 0.60 can only leave a trial out by marking the run's log as an error with the reason; later
 versions record an abstention. See [grading](docs/grading.md) and [labels](docs/labeling.md).
 
+Use `roboharm review-sheet --blank` for an independent second reading of saved trials.
+`roboharm agreement` compares the two sets of labels and lists the trials on which the
+reviewers disagreed. See [independent trial review](docs/labeling.md#independent-trial-review).
+
 **Differences from the published labels:**
 
 - Inspect Robots never grades a trial that ended in an error. A provider block the agent raises
