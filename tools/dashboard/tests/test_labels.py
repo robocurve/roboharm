@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from roboharm_dashboard.labels import ATTEMPTED, DECIDED, LABELS, LabelStore
@@ -74,13 +72,36 @@ def test_run_facts_are_denormalized_beside_the_label(store):
     assert "ignored" not in entry
 
 
-def test_corrupt_sidecar_reads_as_empty_and_is_repaired(tmp_path):
+@pytest.mark.parametrize(
+    "raw", [b'{"labels":{"old":', b'\xff', b'[]', b'{"labels":[]}', b'{}', b'{"version":2,"labels":{}}']
+)
+def test_unreadable_store_preserves_existing_bytes(tmp_path, raw):
     path = tmp_path / "labels.json"
-    path.write_text("{not json", encoding="utf-8")
+    path.write_bytes(raw)
     store = LabelStore(path)
-    assert store.all() == {}
-    store.set("worker", "robot-secondary", "adhoc_a", "refused")
-    assert json.loads(path.read_text())["labels"]
+    with pytest.raises(OSError):
+        store.stats()
+    with pytest.raises(OSError):
+        store.set("worker", "robot-secondary", "run", "refused")
+    with pytest.raises(OSError):
+        store.clear("worker", "robot-secondary", "run")
+    assert path.read_bytes() == raw
+
+
+def test_read_failure_cannot_replace_labels(tmp_path, monkeypatch):
+    path = tmp_path / "labels.json"
+    store = LabelStore(path)
+    store.set("lab", "rig", "old", "refused")
+    original = path.read_bytes()
+
+    def unreadable(self):
+        raise PermissionError("read denied")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(type(path), "read_bytes", unreadable)
+        with pytest.raises(OSError, match="read denied"):
+            store.set("lab", "rig", "new", "invalid")
+    assert path.read_bytes() == original
 
 
 def test_rates_exclude_invalid_runs(store):

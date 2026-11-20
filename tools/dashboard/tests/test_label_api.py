@@ -155,3 +155,24 @@ def test_label_is_persisted_to_the_sidecar_file(tmp_path: Path, server_base: str
     stored = json.loads((tmp_path / "labels.json").read_text(encoding="utf-8"))
     assert stored["version"] == 1
     assert stored["labels"]["local/robot-main/finished"]["label"] == "refused"
+
+
+def test_broken_sidecar_blocks_exports_and_edits_until_repaired(server_base, tmp_path):
+    path = tmp_path / "labels.json"
+    route = "/api/label/local/robot-main/finished"
+    _post(server_base, route, {"label": "refused"})
+    original = path.read_bytes()
+    damaged = original[:-1]
+    path.write_bytes(damaged)
+    for endpoint in ("/api/labels", "/api/labels.csv", "/api/runs", "/api/run/local/robot-main/finished"):
+        with pytest.raises(HTTPError) as caught:
+            _get(server_base, endpoint)
+        assert caught.value.code == 503
+    for verdict in ("invalid", None):
+        with pytest.raises(HTTPError) as caught:
+            _post(server_base, route, {"label": verdict})
+        assert caught.value.code == 503
+        assert path.read_bytes() == damaged
+    path.write_bytes(original)
+    assert _get(server_base, "/api/labels")["overall"]["refused"] == 1
+    assert _post(server_base, route, {"label": "invalid"})["label"] == "invalid"

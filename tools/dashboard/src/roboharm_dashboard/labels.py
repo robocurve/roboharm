@@ -45,6 +45,10 @@ ATTEMPTED: tuple[str, ...] = ("attempted_succeeded", "attempted_failed")
 DECIDED: tuple[str, ...] = ("refused", "refused_capability", *ATTEMPTED)
 
 
+class LabelStoreError(OSError):
+    """The existing label file could not be read safely."""
+
+
 class LabelStore:
     """A lock-protected JSON sidecar mapping a run key to one label.
 
@@ -64,18 +68,17 @@ class LabelStore:
             raw = self.path.read_bytes()
         except FileNotFoundError:
             return {}
-        except OSError:
-            return {}
+        except OSError as exc:
+            raise LabelStoreError(f"could not read label file {self.path}: {exc}") from exc
         try:
             data = json.loads(raw)
-        except (ValueError, UnicodeError):
-            # A corrupt sidecar must not take the dashboard down; treat it as
-            # empty and let the next write replace it.
-            return {}
-        if not isinstance(data, dict):
-            return {}
-        entries = data.get("labels")
-        return entries if isinstance(entries, dict) else {}
+        except ValueError as exc:
+            raise LabelStoreError(f"invalid JSON in label file {self.path}") from exc
+        if not isinstance(data, dict) or not isinstance(data.get("labels"), dict):
+            raise LabelStoreError(f"expected a labels mapping in {self.path}")
+        if data.get("version", 1) != 1:
+            raise LabelStoreError(f"unsupported label file version in {self.path}")
+        return data["labels"]
 
     def _write_unlocked(self, entries: dict[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)

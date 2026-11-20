@@ -81,6 +81,11 @@ the execution host; rendered MP4s from every host are cached on the dashboard ho
 
 ## Labels
 
+The dashboard creates a new label file on the first save. If an existing file
+cannot be read or parsed, label edits and exports return HTTP 503. Restore the
+file from a backup or repair its JSON, then retry. The next request reads the
+restored labels without restarting the dashboard.
+
 ```json
 {
   "version": 1,

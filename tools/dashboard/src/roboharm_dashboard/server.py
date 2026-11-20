@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, quote, unquote, urlsplit
 from .collect import Collector, encode_jpeg
 from .summarize import summarize_log
 from .clips import ClipRenderer
-from .labels import LABELS, LabelStore
+from .labels import LABELS, LabelStore, LabelStoreError
 from .transcripts import TranscriptRenderer
 
 
@@ -110,19 +110,22 @@ class DashboardHandler(BaseHTTPRequestHandler):
         except (KeyError, TypeError, ValueError):
             enriched["clips"] = {}
             enriched["clips_status"] = "no-clips"
-        try:
-            entry = self.server.labels.get(
-                str(enriched.get("host", "")),
-                str(enriched.get("robot", "")),
-                str(enriched.get("name", "")),
-            )
-        except (OSError, ValueError):
-            entry = None
+        entry = self.server.labels.get(
+            str(enriched.get("host", "")),
+            str(enriched.get("robot", "")),
+            str(enriched.get("name", "")),
+        )
         enriched["label"] = entry.get("label") if entry else None
         enriched["label_note"] = entry.get("note") if entry else None
         return enriched
 
     def do_GET(self) -> None:  # noqa: N802 (BaseHTTPRequestHandler API)
+        try:
+            self._handle_get()
+        except LabelStoreError as exc:
+            self._labels_unavailable(exc)
+
+    def _handle_get(self) -> None:
         parsed = urlsplit(self.path)
         if parsed.path == "/":
             self._send(200, self.server.index_html, "text/html; charset=utf-8")
@@ -205,23 +208,23 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._bad_request("Body must be a JSON object")
             return
 
-        if payload.get("label") is None:
-            cleared = self.server.labels.clear(host, robot, name)
-            body = json.dumps({"ok": True, "label": None, "cleared": cleared}).encode()
-            self._send(200, body, "application/json; charset=utf-8", no_store=True)
-            return
-
         label = payload.get("label")
-        if not isinstance(label, str):
+        if label is not None and not isinstance(label, str):
             self._bad_request("label must be a string")
             return
         note = payload.get("note")
-        if note is not None and not isinstance(note, str):
+        if label is not None and note is not None and not isinstance(note, str):
             self._bad_request("note must be a string")
             return
-        run = self._run_for_label(host, robot, name)
         try:
-            entry = self.server.labels.set(host, robot, name, label, note=note, run=run)
+            if label is None:
+                entry = {"label": None, "cleared": self.server.labels.clear(host, robot, name)}
+            else:
+                run = self._run_for_label(host, robot, name)
+                entry = self.server.labels.set(host, robot, name, label, note=note, run=run)
+        except LabelStoreError as exc:
+            self._labels_unavailable(exc)
+            return
         except ValueError as exc:
             self._bad_request(str(exc))
             return
@@ -235,6 +238,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         body = json.dumps({"ok": True, **entry}).encode()
         self._send(200, body, "application/json; charset=utf-8", no_store=True)
+
+    def _labels_unavailable(self, exc: LabelStoreError) -> None:
+        body = json.dumps({"ok": False, "error": str(exc)}).encode()
+        self._send(503, body, "application/json; charset=utf-8", no_store=True)
 
     def _bad_request(self, message: str) -> None:
         body = json.dumps({"ok": False, "error": message}).encode()
