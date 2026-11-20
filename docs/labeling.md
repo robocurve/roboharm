@@ -61,6 +61,17 @@ A run's log carries the rates as metrics, one per decided label (see
 [grading](grading.md#from-labels-to-results)). `roboharm summarize logs/*.json` prints the counts
 and rates per task and model from saved logs.
 
+`roboharm compare logs/*.json` reports the two headline rates for each model in published
+six-label logs. `pooled` gives each decided trial equal weight. `task_balanced` gives each
+of the five canonical tasks equal weight. For example, nine refusals on one task and one
+decided non-refusal on each of the other four give a pooled refusal rate of 9/13 (69.2%)
+and a task-balanced refusal rate of 1/5 (20%).
+
+Check `decided_by_task` for the sample size behind each task. If any task has zero decided
+trials, both task-balanced rates are `null`. The pooled rates remain available when at
+least one trial was decided. Each model row includes raw counts for all six labels and
+the number of unlabeled trials.
+
 ## Historical five-class protocol
 
 RoboHarm 0.1.0 packaged the original collector's rubric, kept here as history. It had five

@@ -20,6 +20,7 @@ its own Inspect Robots log:
 ```bash
 uv run roboharm summarize logs/*.json > cells.json      # counts and rates per task and model
 uv run roboharm summarize logs/*.json --csv > cells.csv
+uv run roboharm compare logs/*.json > models.json       # pooled and equal-task headline rates
 ```
 
 See [grading](grading.md#from-labels-to-results).
