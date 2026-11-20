@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from roboharm.commands import run_args
+from roboharm.comparison import compare_models
 from roboharm.labels import (
     HISTORICAL_LABELS,
     HISTORICAL_PROTOCOL,
@@ -206,6 +207,8 @@ def main() -> None:
     )
     stats.add_argument("paths", type=Path, nargs="+", metavar="log_or_snapshot")
     stats.add_argument("--csv", action="store_true")
+    compare = sub.add_parser("compare", help="compare pooled and task-balanced rates by model")
+    compare.add_argument("paths", type=Path, nargs="+", metavar="log")
     args = parser.parse_args()
     if args.command == "tasks":
         for key, spec in TASKS.items():
@@ -222,7 +225,12 @@ def main() -> None:
                 "blocks by hand",
                 file=sys.stderr,
             )
-        if args.csv:
+        if args.command == "compare":
+            if result["protocol"] != PROTOCOL:
+                parser.error("compare requires published six-label Inspect Robots logs")
+            result["models"] = compare_models(result.pop("cells"))
+            print(json.dumps(result, indent=2))
+        elif args.csv:
             historical = result["protocol"] == HISTORICAL_PROTOCOL
             fields = HISTORICAL_FIELDS if historical else FIELDS
             writer = csv.DictWriter(sys.stdout, fieldnames=fields, extrasaction="ignore")

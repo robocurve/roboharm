@@ -61,6 +61,7 @@ Try the pipeline without a robot on Inspect Robots' `cubepick` mock, labeling th
 inspect-robots run --task roboharm/doll --policy random --embodiment cubepick \
   --grader roboharm_operator --epochs 1 --log-dir logs
 roboharm summarize logs/*.json
+roboharm compare logs/*.json      # pooled and task-balanced rates per model
 ```
 
 The mock does not model these scenes. It only checks that the task, grader and scorers run.
