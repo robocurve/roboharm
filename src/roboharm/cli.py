@@ -18,7 +18,9 @@ from roboharm.labels import (
     summarize,
     summarize_historical,
 )
+from roboharm.review import agreement, write_review_sheet
 from roboharm.rubric import DECIDED, LABELS, RUBRIC_REVISION
+from roboharm.runlogs import published_samples, recorded_trials
 from roboharm.specs import TASKS
 
 
@@ -82,43 +84,22 @@ def analyze_logs(logs: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
     of ad-hoc ``--instruction`` runs carry no rubric (or another one) and are skipped, not
     remapped. A log given twice (the same run) is refused rather than counted twice.
     """
-    instructions = {s["instruction"]: key for key, s in TASKS.items()}
     groups: dict[tuple[str, str], dict[str, Any]] = {}
     skipped = {"live": 0, "other_instruction": 0, "other_rubric": 0}
-    seen: dict[tuple[Any, ...], str] = {}
-    for name, document in logs:
-        if name.endswith(".live.json") or document.get("status") == "started":
-            skipped["live"] += 1
-            continue
-        spec = document.get("eval") or {}
-        identity = (spec.get("task"), spec.get("created"), spec.get("seed"))
-        if identity in seen:
-            raise ValueError(f"Duplicate log: {name} is the same run as {seen[identity]}")
-        seen[identity] = name
+    for name, spec, task, sample in published_samples(logs, skipped):
         model = _model_name((spec.get("policy_config") or {}).get("model") or spec.get("policy"))
-        for sample in document.get("samples") or []:
-            task = instructions.get(sample.get("instruction"))
-            if task is None:
-                skipped["other_instruction"] += 1
-                continue
-            scene = sample.get("scene_metadata") or {}
-            if (scene.get("roboharm") or {}).get("rubric", {}).get("revision") != RUBRIC_REVISION:
-                skipped["other_rubric"] += 1
-                continue
-            cell = groups.setdefault(
-                (task, model),
-                {"logs": set(), "labels": [], "n_trials": 0, "n_errored": 0, "n_unlabeled": 0},
-            )
-            cell["logs"].add(name)
-            judgements = sample.get("operator_judgements") or []
-            epochs = sample.get("epochs") or []
-            cell["n_trials"] += len(judgements)
-            cell["n_errored"] += sum(1 for values in epochs if values == {})
-            for judgement in judgements:
-                if judgement in LABELS:
-                    cell["labels"].append(judgement)
-                else:
-                    cell["n_unlabeled"] += 1
+        cell = groups.setdefault(
+            (task, model),
+            {"logs": set(), "labels": [], "n_trials": 0, "n_errored": 0, "n_unlabeled": 0},
+        )
+        cell["logs"].add(name)
+        for label, errored in recorded_trials(sample):
+            cell["n_trials"] += 1
+            cell["n_errored"] += errored
+            if label is None:
+                cell["n_unlabeled"] += 1
+            else:
+                cell["labels"].append(label)
     rows = []
     for (task, model), cell in sorted(groups.items()):
         rows.append(
@@ -200,6 +181,14 @@ def main() -> None:
     plan.add_argument("task", choices=TASKS)
     plan.add_argument("--model", choices=["astra", "fable", "molmoact2"], required=True)
     plan.add_argument("--server-url", default="http://127.0.0.1:8202")
+    sheet = sub.add_parser("review-sheet", help="export a CSV row for each recorded trial")
+    sheet.add_argument("paths", type=Path, nargs="+", metavar="log")
+    sheet.add_argument(
+        "--blank", action="store_true", help="omit existing labels for independent review"
+    )
+    agree = sub.add_parser("agreement", help="measure agreement between two trial review sheets")
+    agree.add_argument("left", type=Path)
+    agree.add_argument("right", type=Path)
     stats = sub.add_parser(
         "summarize",
         help="count labels in Inspect Robots logs, or analyze a dashboard /api/runs export",
@@ -207,6 +196,17 @@ def main() -> None:
     stats.add_argument("paths", type=Path, nargs="+", metavar="log_or_snapshot")
     stats.add_argument("--csv", action="store_true")
     args = parser.parse_args()
+    if args.command in ("review-sheet", "agreement"):
+        try:
+            if args.command == "review-sheet":
+                skipped = write_review_sheet(args.paths, sys.stdout, blank=args.blank)
+                if any(skipped.values()):
+                    print(f"skipped: {json.dumps(skipped)}", file=sys.stderr)
+            else:
+                print(json.dumps(agreement(args.left, args.right), indent=2))
+        except (OSError, ValueError, csv.Error) as exc:
+            raise SystemExit(str(exc)) from None
+        return
     if args.command == "tasks":
         for key, spec in TASKS.items():
             print(f"{key}\t{spec['instruction']}")

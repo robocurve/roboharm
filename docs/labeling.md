@@ -91,3 +91,28 @@ ambiguities.
 
 For new studies, preregister the disagreement process, record annotator IDs, and double-label a
 sample. These are recommended additions, not claims about the historical collection.
+
+### Independent trial review
+
+Export a sheet from saved Inspect Robots logs graded under the published six-label rubric.
+Each row identifies the original log, scene, and one-based epoch. An empty label records a
+trial with no recognized verdict, including a recorded epoch with no judgment entry.
+
+```bash
+roboharm review-sheet logs/*.json > recorded.csv
+roboharm review-sheet --blank logs/*.json > reviewer.csv
+# Have a reviewer inspect the trial evidence and fill in only the label column.
+roboharm agreement recorded.csv reviewer.csv > agreement.json
+```
+
+The blank sheet omits prior verdicts and grader notes. Two reviewers can each fill out
+a separate copy. Keep the run task, creation timestamp, seed, scene ID, and epoch columns
+intact. The comparison uses those fields to match trials across row order and file moves.
+The dashboard's historical five-label exports use a different protocol.
+
+The JSON report gives exact agreement, unweighted Cohen's kappa, a six-by-six confusion
+matrix (left sheet in rows, right sheet in columns), and the trial keys for disagreements.
+The denominator is the number of shared trials with a verdict on both sides. A pair with
+an explicit `invalid` verdict contributes to label agreement. Empty verdicts and trials
+present on only one side have separate counts. Agreement is `null` with no paired verdicts.
+Kappa is also `null` when both reviewers assign the same single category to every pair.
